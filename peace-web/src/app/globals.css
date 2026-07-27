@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --canvas: #f4f0e8;
+  --card: #fbf8f2;
+  --ink: #201f1b;
+  --muted: #6f6d63;
+  --line: #e4ded2;
+  --accent: #3c5341;
+  --accent-foreground: #f6f3ec;
+  --accent-soft: #e7ece2;
+  --danger: #a4442f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #141410;
+    --card: #1d1d17;
+    --ink: #ece7db;
+    --muted: #a8a498;
+    --line: #2b2b22;
+    --accent: #93b89d;
+    --accent-foreground: #14140e;
+    --accent-soft: #23271f;
+    --danger: #e0876f;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-geist-sans);
+  --font-display: var(--font-fraunces);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: color-mix(in oklab, var(--muted) 50%, transparent);
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 32s linear infinite;
+}

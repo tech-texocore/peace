@@ -1,0 +1,20 @@
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+
+export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'STAFF';
+
+export interface AuthUser {
+  uid: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+  role?: AdminRole;
+  storeId?: string;
+}
+
+export const CurrentUser = createParamDecorator(
+  (data: keyof AuthUser | undefined, ctx: ExecutionContext): AuthUser | AuthUser[keyof AuthUser] => {
+    const request = ctx.switchToHttp().getRequest();
+    const user: AuthUser = request.user;
+    return data ? user?.[data] : user;
+  },
+);

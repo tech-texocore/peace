@@ -1,0 +1,963 @@
+// Peace — ecommerce data model
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Platform: stores (tenants), admin users, and per-store storefront config.
+// ---------------------------------------------------------------------------
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+model Store {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  domain       String?  @unique
+  isActive     Boolean  @default(true)
+  settings     Json?
+  integrations Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  admins         AdminUser[]
+  roles          AccessRole[]
+  siteConfig     SiteConfig?
+  sellers        Seller[]
+  categories     Category[]
+  collections    Collection[]
+  brands         Brand[]
+  products       Product[]
+  masterLists    MasterList[]
+  customerGroups CustomerGroup[]
+  discounts      Discount[]
+  reviews        Review[]
+  questions      ProductQuestion[]
+  orders         Order[]
+}
+
+// Configurable role: the Super Admin decides which permissions each role has.
+model AccessRole {
+  id          String   @id @default(cuid())
+  storeId     String?
+  store       Store?   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  permissions String[]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  admins AdminUser[]
+
+  @@unique([storeId, key])
+  @@index([storeId])
+}
+
+model AdminUser {
+  id          String      @id @default(cuid())
+  firebaseUid String      @unique
+  email       String      @unique
+  name        String?
+  role        AdminRole   @default(ADMIN)
+  roleId      String?
+  roleRef     AccessRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  storeId     String?
+  store       Store?      @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([storeId])
+  @@index([roleId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  storeId    String?
+  actorId    String?
+  actorEmail String?
+  actorRole  String?
+  action     String
+  entity     String?
+  entityId   String?
+  method     String
+  path       String
+  status     Int
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([storeId, createdAt])
+  @@index([actorId])
+}
+
+model SiteConfig {
+  id          String    @id @default(cuid())
+  storeId     String    @unique
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  draft       Json
+  published   Json?
+  publishedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Users — mirrors the Firebase user; firebaseUid links to the auth provider.
+// ---------------------------------------------------------------------------
+model User {
+  id              String         @id @default(cuid())
+  firebaseUid     String         @unique
+  email           String         @unique
+  name            String?
+  phone           String?
+  phoneVerified   Boolean        @default(false)
+  avatarUrl       String?
+  gender          Gender?
+  dob             DateTime?
+  emailOptIn      Boolean        @default(true)
+  smsOptIn        Boolean        @default(true)
+  whatsappOptIn   Boolean        @default(true)
+  notificationPrefs Json?
+  role            Role           @default(CUSTOMER)
+  customerGroupId String?
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  addresses      Address[]
+  cartItems      CartItem[]
+  orders         Order[]
+  wishlist       WishlistItem[]
+  reviews        Review[]
+  reviewVotes    ReviewVote[]
+  questions      ProductQuestion[]
+  answers        ProductAnswer[]
+  discountUsages DiscountUsage[]
+  returns        ReturnRequest[]
+
+  @@index([customerGroupId])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model Address {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipientName  String
+  recipientPhone String
+  line1          String
+  line2          String?
+  landmark       String?
+  city           String
+  district       String?
+  state          String
+  postalCode     String
+  country        String      @default("India")
+  latitude       Float?
+  longitude      Float?
+  type           AddressType @default(HOME)
+  isDefault      Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([userId])
+}
+
+enum AddressType {
+  HOME
+  WORK
+  OTHER
+}
+
+model OtpChallenge {
+  id        String   @id @default(cuid())
+  phone     String
+  codeHash  String
+  purpose   String   @default("phone_verify")
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, purpose])
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+enum SellerStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// A seller lists products on the platform. Admin creates/manages sellers;
+// sellers have no self-signup or portal yet (Phase 7). The platform owner is
+// the first-party seller (isFirstParty = true).
+model Seller {
+  id           String       @id @default(cuid())
+  storeId      String
+  store        Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name         String
+  legalName    String?
+  businessType String?
+  gstin        String?
+  pan          String?
+  email        String?
+  phone        String?
+  supportEmail String?
+  supportPhone String?
+  description  String?
+  logoUrl      String?
+  status       SellerStatus @default(ACTIVE)
+  isFirstParty Boolean      @default(false)
+
+  // Seller-level policies (a product may override the return rule).
+  returnable       Boolean @default(true)
+  returnWindowDays Int     @default(7)
+  replacementDays  Int?
+  dispatchDays     Int     @default(2)
+  codAvailable     Boolean @default(true)
+  warrantyInfo     String?
+
+  pickupName       String?
+  pickupPhone      String?
+  pickupLine1      String?
+  pickupLine2      String?
+  pickupLandmark   String?
+  pickupCity       String?
+  pickupDistrict   String?
+  pickupState      String?
+  pickupPostalCode String?
+  pickupCountry    String? @default("India")
+
+  bankAccountName   String?
+  bankAccountNumber String?
+  bankIfsc          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([storeId])
+}
+
+// Platform-level taxonomy (shared across sellers). Self-referencing tree.
+model Category {
+  id              String     @id @default(cuid())
+  storeId         String
+  store           Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  description     String?
+  imageUrl        String?
+  parentId        String?
+  parent          Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children        Category[] @relation("CategoryTree")
+  path            String?
+  // Master keys that apply to products in this category (drives the product form).
+  attributeKeys   String[]   @default([])
+  variantAxisKeys String[]   @default([])
+  position        Int        @default(0)
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  products Product[]
+
+  @@unique([storeId, slug])
+  @@index([storeId, parentId])
+}
+
+enum CollectionType {
+  MANUAL
+  AUTO
+}
+
+enum CollectionSort {
+  MANUAL
+  BEST_SELLING
+  PRICE_ASC
+  PRICE_DESC
+  NEWEST
+  OLDEST
+}
+
+// Platform-level curated/auto merchandising groups (many-to-many with products).
+model Collection {
+  id              String         @id @default(cuid())
+  storeId         String
+  store           Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  slug            String
+  title           String
+  description     String?
+  imageUrl        String?
+  type            CollectionType @default(MANUAL)
+  // For AUTO collections: { match: "ALL"|"ANY", conditions: [{field,operator,value}] }.
+  rules           Json?
+  sortOrder       CollectionSort @default(MANUAL)
+  metaTitle       String?
+  metaDescription String?
+  position        Int            @default(0)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  productLinks CollectionProduct[]
+
+  @@unique([storeId, slug])
+  @@index([storeId])
+}
+
+// Explicit join so manual collections can order their products.
+model CollectionProduct {
+  id           String     @id @default(cuid())
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position     Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@unique([collectionId, productId])
+  @@index([collectionId])
+  @@index([productId])
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Product {
+  id           String        @id @default(cuid())
+  storeId      String
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sellerId     String
+  seller       Seller        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  categoryId   String?
+  category     Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  slug         String
+  title        String
+  description  String?
+  brandId      String?
+  brand        Brand?        @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  status       ProductStatus @default(DRAFT)
+  hsnCode      String?
+  gstRate      Decimal?      @db.Decimal(5, 2)
+  taxInclusive Boolean       @default(true)
+  discountable Boolean       @default(true)
+  uom          String        @default("PIECE")
+  currency     String        @default("INR")
+
+  // Made-to-order / personalised products (e.g. embroidery): the customer
+  // supplies notes + images at order time. Fields defined per product.
+  isCustomizable      Boolean @default(false)
+  customizationFields Json?
+
+  // Which master keys define this product's variants, e.g. ["size","colour"].
+  variantAxes       Json?
+  // Product-level attributes shown on the PDP, e.g. [{key,label,value}].
+  specifications    Json?
+  tags              String[] @default([])
+  // Manually-mapped "complete the look" / cross-sell products.
+  relatedProductIds String[] @default([])
+
+  metaTitle       String?
+  metaDescription String?
+
+  // null = inherit the seller's default return policy.
+  returnable       Boolean?
+  returnWindowDays Int?
+
+  minOrderQty Int?
+  maxOrderQty Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media           ProductMedia[]
+  variants        ProductVariant[]
+  collectionLinks CollectionProduct[]
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+  wishlist        WishlistItem[]
+  reviews         Review[]
+  questions       ProductQuestion[]
+
+  @@unique([storeId, slug])
+  @@index([brandId])
+  @@index([storeId, status])
+  @@index([sellerId])
+  @@index([categoryId])
+}
+
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku        String
+  // Variant axis values keyed by the product's variantAxes, e.g. { size:"XL", colour:"Blue" }.
+  attributes Json?
+  price      Decimal  @db.Decimal(10, 2)
+  mrp        Decimal? @db.Decimal(10, 2)
+  costPrice  Decimal? @db.Decimal(10, 2)
+  stock      Int      @default(0)
+  barcode    String?
+
+  weightGrams Int?
+  lengthCm    Decimal? @db.Decimal(6, 2)
+  widthCm     Decimal? @db.Decimal(6, 2)
+  heightCm    Decimal? @db.Decimal(6, 2)
+
+  position  Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  media          ProductMedia[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
+  backInStock    BackInStockSubscription[]
+
+  @@unique([productId, sku])
+  @@index([productId])
+}
+
+model StockMovement {
+  id        String         @id @default(cuid())
+  storeId   String
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  delta     Int
+  reason    String
+  note      String?
+  actor     String?
+  createdAt DateTime       @default(now())
+
+  @@index([storeId])
+  @@index([variantId])
+}
+
+model BackInStockSubscription {
+  id        String         @id @default(cuid())
+  storeId   String
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  email     String
+  notified  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+
+  @@unique([variantId, email])
+  @@index([storeId, notified])
+}
+
+enum SubscriptionStatus {
+  SUBSCRIBED
+  UNSUBSCRIBED
+}
+
+model NewsletterSubscriber {
+  id        String             @id @default(cuid())
+  storeId   String
+  email     String
+  source    String             @default("newsletter")
+  status    SubscriptionStatus @default(SUBSCRIBED)
+  userId    String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([storeId, email])
+  @@index([storeId, status])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENT
+}
+
+model Campaign {
+  id             String         @id @default(cuid())
+  storeId        String
+  name           String
+  channels       String[]       @default([])
+  subject        String?
+  body           String
+  audience       Json?
+  targetUrl      String?
+  productIds     String[]       @default([])
+  status         CampaignStatus @default(DRAFT)
+  scheduledAt    DateTime?
+  recipientCount Int            @default(0)
+  sentAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([storeId, status])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  storeId   String
+  userId    String
+  title     String
+  body      String
+  deepLink  String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model ProductMedia {
+  id           String          @id @default(cuid())
+  productId    String
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId    String?
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  colours      String[]        @default([])
+  type         MediaType       @default(IMAGE)
+  url          String
+  thumbnailUrl String?
+  alt          String?
+  position     Int             @default(0)
+
+  @@index([productId])
+  @@index([variantId])
+}
+
+// A brand is its own catalogued entity (like Category) — logo, description,
+// storefront page — and products link to it.
+model Brand {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  logoUrl     String?
+  description String?
+  isActive    Boolean  @default(true)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products Product[]
+
+  @@unique([storeId, slug])
+  @@index([storeId])
+}
+
+// ---------------------------------------------------------------------------
+// Masters — configurable reference data (UOM, business types, size, colour,
+// fabric, pattern, occasion, season…). Store-scoped; Super Admin manages all.
+// ---------------------------------------------------------------------------
+model MasterList {
+  id        String   @id @default(cuid())
+  storeId   String
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  key       String
+  label     String
+  fields    Json?
+  // Where this master can be used on products: "variant" (creates SKUs) and/or "spec".
+  usage     String[] @default([])
+  isSystem  Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MasterItem[]
+
+  @@unique([storeId, key])
+  @@index([storeId])
+}
+
+model MasterItem {
+  id        String     @id @default(cuid())
+  listId    String
+  list      MasterList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  value     String
+  label     String
+  metadata  Json?
+  position  Int        @default(0)
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([listId, value])
+  @@index([listId])
+}
+
+// ---------------------------------------------------------------------------
+// Cart & Wishlist
+// ---------------------------------------------------------------------------
+model CartItem {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId     String
+  variant       ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity      Int            @default(1)
+  customization Json?
+  reminderSentAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([userId, variantId])
+  @@index([userId])
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  storeId       String
+  store         Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  status        OrderStatus   @default(PENDING)
+  subtotal      Decimal       @db.Decimal(10, 2)
+  discount      Decimal       @default(0) @db.Decimal(10, 2)
+  taxAmount     Decimal       @default(0) @db.Decimal(10, 2)
+  shippingFee   Decimal       @default(0) @db.Decimal(10, 2)
+  total         Decimal       @db.Decimal(10, 2)
+  currency      String        @default("INR")
+  couponCode    String?
+
+  // Snapshot of the delivery address at order time (address rows can change/delete).
+  shippingAddress Json
+  deliveryMethod  String    @default("standard")
+  estimatedDelivery DateTime?
+  notes           String?
+
+  paymentMethod PaymentMethod @default(COD)
+  paymentStatus PaymentStatus @default(UNPAID)
+  paymentRef    String?
+  // Provider order id (e.g. Razorpay order_...) for online payments.
+  paymentOrderId String?
+
+  cancelReason String?
+  cancelledAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items   OrderItem[]
+  events  OrderEvent[]
+  returns ReturnRequest[]
+
+  @@index([userId])
+  @@index([storeId, status])
+}
+
+enum ReturnType {
+  RETURN
+  EXCHANGE
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model ReturnRequest {
+  id         String       @id @default(cuid())
+  storeId    String
+  orderId    String
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       ReturnType   @default(RETURN)
+  reason     String
+  status     ReturnStatus @default(REQUESTED)
+  resolution String?
+  refunded   Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([storeId, status])
+  @@index([orderId])
+}
+
+model OrderItem {
+  id            String          @id @default(cuid())
+  orderId       String
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product         @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  // Marketplace-ready: item carries its seller for future per-seller order splitting.
+  sellerId      String?
+  name          String
+  image         String?
+  sku           String?
+  price         Decimal         @db.Decimal(10, 2)
+  mrp           Decimal?        @db.Decimal(10, 2)
+  quantity      Int
+  customization Json?
+
+  @@index([orderId])
+}
+
+// Status-change timeline for order tracking.
+model OrderEvent {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+enum PaymentMethod {
+  COD
+  RAZORPAY
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PACKED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Coupons & Reviews
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Promotions & Pricing engine
+// ---------------------------------------------------------------------------
+model CustomerGroup {
+  id          String   @id @default(cuid())
+  storeId     String
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@unique([storeId, slug])
+  @@index([storeId])
+}
+
+// AUTOMATIC discounts apply on their own; CODE discounts need a coupon code.
+enum DiscountMethod {
+  AUTOMATIC
+  CODE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+  BUY_X_GET_Y
+}
+
+enum DiscountScope {
+  ALL
+  PRODUCTS
+  CATEGORIES
+  COLLECTIONS
+}
+
+model Discount {
+  id      String         @id @default(cuid())
+  storeId String
+  store   Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name    String
+  method  DiscountMethod @default(AUTOMATIC)
+  code    String?
+  type    DiscountType   @default(PERCENTAGE)
+  value   Decimal        @default(0) @db.Decimal(10, 2)
+
+  scope               DiscountScope @default(ALL)
+  targetProductIds    String[]      @default([])
+  targetCategoryIds   String[]      @default([])
+  targetCollectionIds String[]      @default([])
+
+  // Conditions
+  minSubtotal      Decimal? @db.Decimal(10, 2)
+  minQuantity      Int?
+  customerGroupIds String[] @default([])
+
+  // Buy X Get Y
+  buyQuantity        Int?
+  getQuantity        Int?
+  getDiscountPercent Int?
+
+  // Tiered / bulk pricing: [{ minQty, type, value }]
+  tiers Json?
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  usageLimit       Int?
+  perCustomerLimit Int?
+  usedCount        Int  @default(0)
+
+  priority  Int     @default(0)
+  stackable Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  featuredInNewsletter Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usages DiscountUsage[]
+
+  @@index([storeId, method])
+  @@index([storeId, code])
+}
+
+model DiscountUsage {
+  id         String   @id @default(cuid())
+  discountId String
+  discount   Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId    String?
+  usedAt     DateTime @default(now())
+
+  @@index([discountId, userId])
+}
+
+enum ModerationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Review {
+  id                 String           @id @default(cuid())
+  storeId            String
+  store              Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId          String
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId            String?
+  rating             Int
+  title              String?
+  comment            String?
+  media              String[]         @default([])
+  isVerifiedPurchase Boolean          @default(false)
+  status             ModerationStatus @default(PENDING)
+  helpfulCount       Int              @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  votes ReviewVote[]
+
+  @@unique([productId, userId])
+  @@index([productId, status])
+  @@index([storeId, status])
+}
+
+model ReviewVote {
+  id        String   @id @default(cuid())
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, userId])
+}
+
+model ProductQuestion {
+  id        String           @id @default(cuid())
+  storeId   String
+  store     Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  status    ModerationStatus @default(PENDING)
+  createdAt DateTime         @default(now())
+
+  answers ProductAnswer[]
+
+  @@index([productId, status])
+}
+
+model ProductAnswer {
+  id         String           @id @default(cuid())
+  questionId String
+  question   ProductQuestion  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String
+  isSeller   Boolean          @default(false)
+  status     ModerationStatus @default(APPROVED)
+  createdAt  DateTime         @default(now())
+
+  @@index([questionId])
+}
