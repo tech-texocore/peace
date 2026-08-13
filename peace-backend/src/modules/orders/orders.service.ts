@@ -50,8 +50,7 @@ export class OrdersService {
     return v.product.storeId;
   }
 
-  async checkoutConfig(uid: string) {
-    await this.user(uid);
+  async checkoutConfig() {
     const store = await this.prisma.store.findFirst({ select: { settings: true } });
     const shipping = resolveShipping(store?.settings);
     return {

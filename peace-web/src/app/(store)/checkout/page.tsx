@@ -54,12 +54,15 @@ export default function CheckoutPage() {
     if (!user) return;
     (async () => {
       try {
-        const [cfg, addr] = await Promise.all([getCheckoutConfig(), api.get<Address[]>("/account/addresses", { auth: true })]);
+        const cfg = await getCheckoutConfig();
         setConfig(cfg);
-        setAddresses(addr);
-        setAddressId(addr.find((a) => a.isDefault)?.id ?? addr[0]?.id ?? "");
         setDeliveryMethod(cfg.delivery.methods[0]?.key ?? "standard");
         if (!cfg.payment.razorpay.enabled) setPayment("COD");
+        const addr = await api.get<Address[]>("/account/addresses", { auth: true }).catch(() => [] as Address[]);
+        setAddresses(addr);
+        setAddressId(addr.find((a) => a.isDefault)?.id ?? addr[0]?.id ?? "");
+      } catch (e) {
+        setError((e as Error)?.message ?? "Couldn't load checkout. Please refresh and try again.");
       } finally { setBooting(false); }
     })();
   }, [user]);

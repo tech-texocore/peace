@@ -30,9 +30,13 @@ export default function CartPage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const q = await fetchQuote(env.apiBaseUrl, env.storeSlug, items, coupons);
+    if (q && items.length) {
+      const valid = new Set(q.lines.map((l) => l.variantId));
+      items.filter((i) => !valid.has(i.variantId)).forEach((o) => remove(o.variantId));
+    }
     setQuote(q);
     setLoading(false);
-  }, [items, coupons]);
+  }, [items, coupons, remove]);
 
   useEffect(() => { if (ready) refresh(); }, [ready, refresh]);
 

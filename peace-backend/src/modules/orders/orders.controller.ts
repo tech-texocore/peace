@@ -23,8 +23,8 @@ export class OrdersController {
 
   // ---------------- Customer (auth) ----------------
   @Get('checkout-config')
-  checkoutConfig(@CurrentUser('uid') uid: string) {
-    return this.orders.checkoutConfig(uid);
+  checkoutConfig() {
+    return this.orders.checkoutConfig();
   }
 
   @Get('mine')

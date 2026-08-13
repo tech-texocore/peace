@@ -22,6 +22,7 @@ import {
   type User,
 } from "firebase/auth";
 import { firebaseAuth, googleProvider } from "@/lib/firebase/client";
+import { api } from "@/lib/api/client";
 
 type AdminRole = "SUPER_ADMIN" | "ADMIN" | "STAFF";
 
@@ -56,6 +57,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (u) {
         try { const token = await u.getIdTokenResult(); setRole(((token.claims.role as AdminRole) ?? null) || null); }
         catch { setRole(null); }
+        // Ensure a backend profile exists so user-scoped pages (checkout, account) never 404.
+        api.get("/account/me", { auth: true }).catch(() => {});
       } else {
         setRole(null);
       }

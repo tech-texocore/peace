@@ -56,6 +56,12 @@ export class PricingService {
       else if (d.method === 'CODE' && d.code) rejectedCoupons.push({ code: d.code, reason: 'Not valid for the items in your cart' });
     }
 
+    // Any code the shopper typed that matched no active discount → invalid or expired.
+    const candidateCodes = new Set(candidates.map((d) => d.code).filter(Boolean));
+    for (const code of codes) {
+      if (!candidateCodes.has(code)) rejectedCoupons.push({ code, reason: 'Invalid or expired code' });
+    }
+
     // Free shipping applies independently. Amount discounts follow stacking rules:
     // all stackable apply; among non-stackable, only the single best.
     const freeShip = applied.filter((a) => a.freeShipping);
