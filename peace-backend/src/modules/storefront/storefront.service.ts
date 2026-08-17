@@ -274,7 +274,11 @@ export class StorefrontService {
       : p.categoryId ? await this.cardList(storeId, { categoryId: p.categoryId, id: { not: p.id } }, 8) : [];
 
     const rating = await this.reviews.summary(p.id);
-    return { ...p, priceFrom: prices.length ? Math.min(...prices) : null, inStock: p.variants.some((v) => v.stock > 0), sizeGuide, related, ratingAvg: rating.average, ratingCount: rating.count };
+    // Product-level return policy overrides the seller default for what the PDP shows.
+    const seller = p.seller
+      ? { ...p.seller, returnable: p.returnable ?? p.seller.returnable, returnWindowDays: p.returnWindowDays ?? p.seller.returnWindowDays }
+      : p.seller;
+    return { ...p, seller, priceFrom: prices.length ? Math.min(...prices) : null, inStock: p.variants.some((v) => v.stock > 0), sizeGuide, related, ratingAvg: rating.average, ratingCount: rating.count };
   }
 
   // Cards for a specific set of product ids (wishlist etc.) — order preserved,

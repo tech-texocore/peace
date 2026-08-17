@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PAYMENT_PROVIDER, type PaymentProvider, type ProviderOrder } from './payment-provider.interface';
+import { PAYMENT_PROVIDER, type PaymentProvider, type ProviderOrder, type ProviderRefund } from './payment-provider.interface';
 
 @Injectable()
 export class PaymentsService {
@@ -22,5 +22,9 @@ export class PaymentsService {
 
   verifyWebhook(rawBody: string, signature: string): boolean {
     return this.provider.verifyWebhook(rawBody, signature);
+  }
+
+  refund(paymentId: string, amountRupees: number, notes?: Record<string, string>): Promise<ProviderRefund> {
+    return this.provider.refund(paymentId, Math.round(amountRupees * 100), notes);
   }
 }

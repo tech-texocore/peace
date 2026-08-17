@@ -25,6 +25,11 @@ export interface Order {
   couponCode: string | null; paymentMethod: PaymentMethod; paymentStatus: string;
   deliveryMethod: string; estimatedDelivery: string | null; shippingAddress: ShippingAddress;
   notes: string | null; createdAt: string; items: OrderItem[]; events?: OrderEvent[];
+  returnRequest?: {
+    id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: ReturnStatus;
+    resolution: string | null; refundId: string | null; refundAmount: number | null;
+    pickedUpAt: string | null; refundedAt: string | null; createdAt: string;
+  } | null;
 }
 
 export interface CreateOrderInput {
@@ -49,7 +54,7 @@ export const getMyOrders = () => api.get<Order[]>("/orders/mine", { auth: true }
 export const getMyOrder = (id: string) => api.get<Order>(`/orders/mine/${id}`, { auth: true });
 export const cancelOrder = (id: string, reason?: string) => api.post(`/orders/${id}/cancel`, { reason }, { auth: true });
 
-export type ReturnStatus = "REQUESTED" | "APPROVED" | "REJECTED" | "COMPLETED";
+export type ReturnStatus = "REQUESTED" | "APPROVED" | "PICKED_UP" | "REFUNDED" | "REJECTED";
 export interface ReturnRequestT {
   id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: ReturnStatus;
   resolution: string | null; refunded: boolean; createdAt: string; order?: { orderNumber: string };

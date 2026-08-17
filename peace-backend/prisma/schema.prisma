@@ -704,8 +704,9 @@ enum ReturnType {
 enum ReturnStatus {
   REQUESTED
   APPROVED
+  PICKED_UP
+  REFUNDED
   REJECTED
-  COMPLETED
 }
 
 model ReturnRequest {
@@ -720,6 +721,10 @@ model ReturnRequest {
   status     ReturnStatus @default(REQUESTED)
   resolution String?
   refunded   Boolean      @default(false)
+  refundId   String?
+  refundAmount Decimal?   @db.Decimal(10, 2)
+  pickedUpAt DateTime?
+  refundedAt DateTime?
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 

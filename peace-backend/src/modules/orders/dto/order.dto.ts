@@ -40,7 +40,7 @@ export class RequestReturnDto {
 }
 
 export class ResolveReturnDto {
-  @IsIn(['APPROVE', 'REJECT']) action!: 'APPROVE' | 'REJECT';
+  @IsIn(['APPROVE', 'REJECT', 'MARK_PICKED_UP', 'REFUND']) action!: 'APPROVE' | 'REJECT' | 'MARK_PICKED_UP' | 'REFUND';
   @IsOptional() @IsString() resolution?: string;
 }
 

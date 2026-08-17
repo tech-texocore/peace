@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, X, Check, Undo2 } from "lucide-react";
+import { Loader2, X, Check, Undo2, Truck, IndianRupee } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useAdminAuth } from "@/lib/admin/auth-context";
 import { PageHeader } from "@/components/admin/page-header";
@@ -10,20 +10,28 @@ import { EmptyState } from "@/components/admin/empty-state";
 import { inr } from "@/lib/orders";
 import { cn } from "@/lib/utils/cn";
 
-type Status = "REQUESTED" | "APPROVED" | "REJECTED" | "COMPLETED";
+type Status = "REQUESTED" | "APPROVED" | "PICKED_UP" | "REFUNDED" | "REJECTED";
+type Action = "APPROVE" | "REJECT" | "MARK_PICKED_UP" | "REFUND";
 interface Row {
-  id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: Status; resolution: string | null; refunded: boolean; createdAt: string;
+  id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: Status; resolution: string | null; refunded: boolean; refundId: string | null; createdAt: string;
   order: { orderNumber: string; total: number }; user: { name: string | null; email: string };
 }
-const STATUS_LABEL: Record<Status, string> = { REQUESTED: "To review", APPROVED: "Approved", REJECTED: "Rejected", COMPLETED: "Done" };
+const STATUS_LABEL: Record<Status, string> = { REQUESTED: "To review", APPROVED: "Approved · awaiting pickup", PICKED_UP: "Picked up · to refund", REFUNDED: "Refunded", REJECTED: "Rejected" };
 const TABS: { key: Status | ""; label: string }[] = [
-  { key: "REQUESTED", label: "To review" }, { key: "COMPLETED", label: "Completed" }, { key: "REJECTED", label: "Rejected" }, { key: "", label: "All" },
+  { key: "REQUESTED", label: "To review" }, { key: "APPROVED", label: "Awaiting pickup" }, { key: "PICKED_UP", label: "To refund" }, { key: "REFUNDED", label: "Refunded" }, { key: "REJECTED", label: "Rejected" }, { key: "", label: "All" },
 ];
 const badge: Record<Status, string> = {
   REQUESTED: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   APPROVED: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400",
-  COMPLETED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
+  PICKED_UP: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400",
+  REFUNDED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
   REJECTED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
+};
+const ACTION_META: Record<Action, { title: string; desc: string; cta: string }> = {
+  APPROVE: { title: "Approve return", desc: "The customer is asked to keep the item packed and ready for pickup.", cta: "Approve" },
+  REJECT: { title: "Reject return", desc: "The customer will be notified the request was declined.", cta: "Reject" },
+  MARK_PICKED_UP: { title: "Mark as picked up", desc: "Confirm the courier has collected the item from the customer.", cta: "Mark picked up" },
+  REFUND: { title: "Initiate refund", desc: "Refunds to the original payment method (online) or manually (COD), restores stock, and marks the order Returned.", cta: "Initiate refund" },
 };
 
 export default function ReturnsPage() {
@@ -32,7 +40,7 @@ export default function ReturnsPage() {
   const [pending, setPending] = useState(0);
   const [tab, setTab] = useState<Status | "">("REQUESTED");
   const [loading, setLoading] = useState(true);
-  const [resolve, setResolve] = useState<{ row: Row; action: "APPROVE" | "REJECT" } | null>(null);
+  const [resolve, setResolve] = useState<{ row: Row; action: Action } | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -89,15 +97,20 @@ export default function ReturnsPage() {
                   </div>
                   <p className="mt-1 text-xs text-muted">Order <span className="font-medium text-ink">{r.order.orderNumber}</span> · {inr(r.order.total)} · {r.user.name ?? r.user.email} · {new Date(r.createdAt).toLocaleDateString("en-IN")}</p>
                 </div>
-                {canUpdate && r.status === "REQUESTED" && (
+                {canUpdate && (
                   <div className="flex gap-2">
-                    <button onClick={() => { setResolve({ row: r, action: "APPROVE" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-500/10"><Check className="h-3.5 w-3.5" /> Approve</button>
-                    <button onClick={() => { setResolve({ row: r, action: "REJECT" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium hover:bg-accent-soft"><X className="h-3.5 w-3.5" /> Reject</button>
+                    {r.status === "REQUESTED" && <>
+                      <button onClick={() => { setResolve({ row: r, action: "APPROVE" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 px-2.5 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-500/10"><Check className="h-3.5 w-3.5" /> Approve</button>
+                      <button onClick={() => { setResolve({ row: r, action: "REJECT" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1.5 text-xs font-medium hover:bg-accent-soft"><X className="h-3.5 w-3.5" /> Reject</button>
+                    </>}
+                    {r.status === "APPROVED" && <button onClick={() => { setResolve({ row: r, action: "MARK_PICKED_UP" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-400 dark:hover:bg-indigo-500/10"><Truck className="h-3.5 w-3.5" /> Mark picked up</button>}
+                    {r.status === "PICKED_UP" && <button onClick={() => { setResolve({ row: r, action: "REFUND" }); setNote(""); }} className="inline-flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-semibold text-accent-foreground hover:opacity-90"><IndianRupee className="h-3.5 w-3.5" /> Initiate refund</button>}
                   </div>
                 )}
               </div>
               <p className="mt-2 text-sm"><span className="text-muted">Reason:</span> {r.reason}</p>
               {r.resolution && <p className="mt-1 text-xs text-muted">Note: {r.resolution}</p>}
+              {r.refundId && <p className="mt-1 text-xs text-muted">Refund id: <span className="font-mono">{r.refundId}</span></p>}
             </div>
           ))}
         </div>
@@ -107,11 +120,13 @@ export default function ReturnsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <button className="absolute inset-0 bg-black/50" onClick={() => setResolve(null)} />
           <div className="relative w-full max-w-sm rounded-2xl border border-line bg-card p-6 shadow-2xl">
-            <h3 className="font-display text-lg">{resolve.action === "APPROVE" ? "Approve return" : "Reject return"}</h3>
-            <p className="mt-1 text-sm text-muted">{resolve.action === "APPROVE" ? "Stock will be restored and the payment flagged for refund." : "The customer will be notified it was declined."}</p>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Note to customer (optional)" className="mt-3 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent" />
+            <h3 className="font-display text-lg">{ACTION_META[resolve.action].title}</h3>
+            <p className="mt-1 text-sm text-muted">{ACTION_META[resolve.action].desc}</p>
+            {(resolve.action === "APPROVE" || resolve.action === "REJECT") && (
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Note to customer (optional)" className="mt-3 w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent" />
+            )}
             <div className="mt-4 flex gap-2">
-              <button onClick={submit} disabled={busy} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-accent py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />} Confirm</button>
+              <button onClick={submit} disabled={busy} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-accent py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50">{busy && <Loader2 className="h-4 w-4 animate-spin" />} {ACTION_META[resolve.action].cta}</button>
               <button onClick={() => setResolve(null)} className="rounded-full border border-line px-5 text-sm hover:bg-accent-soft">Cancel</button>
             </div>
           </div>

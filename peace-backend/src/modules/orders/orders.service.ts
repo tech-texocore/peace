@@ -243,7 +243,7 @@ export class OrdersService {
     const user = await this.user(uid);
     const order = await this.prisma.order.findFirst({
       where: { id, userId: user.id },
-      include: { items: true, events: { orderBy: { createdAt: 'asc' } } },
+      include: { items: true, events: { orderBy: { createdAt: 'asc' } }, returns: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
     if (!order) throw new NotFoundException('Order not found');
     return this.serialize(order);
@@ -274,6 +274,13 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
     if (!CANCELLABLE.includes(order.status)) throw new BadRequestException('This order can no longer be cancelled');
 
+    // Refund a captured online payment at the gateway before flagging the order.
+    let refundId: string | null = null;
+    if (order.paymentMethod === 'RAZORPAY' && order.paymentStatus === 'PAID' && order.paymentRef) {
+      const r = await this.payments.refund(order.paymentRef, Number(order.total), { orderNumber: order.orderNumber, reason: 'order_cancelled' });
+      refundId = r.refundId;
+    }
+
     await this.prisma.$transaction(async (tx) => {
       for (const it of order.items) {
         if (it.variantId) await tx.productVariant.update({ where: { id: it.variantId }, data: { stock: { increment: it.quantity } } });
@@ -283,21 +290,42 @@ export class OrdersService {
         data: {
           status: 'CANCELLED', cancelReason: reason ?? null, cancelledAt: new Date(),
           paymentStatus: order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
-          events: { create: { status: 'CANCELLED', note: reason ?? 'Cancelled by customer' } },
+          events: { create: { status: 'CANCELLED', note: refundId ? `Cancelled — refund ${refundId}` : (reason ?? 'Cancelled by customer') } },
         },
       });
     });
-    void this.notifyOrder(order.id, `Order ${order.orderNumber} cancelled`, 'Your order has been cancelled. Any payment will be refunded to the original method.');
-    return { cancelled: true };
+    void this.notifyOrder(order.id, `Order ${order.orderNumber} cancelled`, refundId ? `Your order is cancelled and a refund of ₹${Number(order.total).toLocaleString('en-IN')} has been initiated to your original payment method.` : 'Your order has been cancelled. Any payment will be refunded to the original method.');
+    return { cancelled: true, refundId };
   }
 
   // ---------------- Returns / RMA ----------------
   async requestReturn(uid: string, orderId: string, type: 'RETURN' | 'EXCHANGE', reason: string) {
     const user = await this.user(uid);
-    const order = await this.prisma.order.findFirst({ where: { id: orderId, userId: user.id }, select: { id: true, storeId: true, status: true, orderNumber: true } });
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId: user.id },
+      select: {
+        id: true, storeId: true, status: true, orderNumber: true,
+        items: { select: { quantity: true, product: { select: { returnable: true, returnWindowDays: true, seller: { select: { returnable: true, returnWindowDays: true } } } } } },
+        events: { where: { status: 'DELIVERED' }, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+      },
+    });
     if (!order) throw new NotFoundException('Order not found');
     if (order.status !== 'DELIVERED') throw new BadRequestException('Returns can be raised only after delivery');
-    const existing = await this.prisma.returnRequest.findFirst({ where: { orderId, status: { in: ['REQUESTED', 'APPROVED'] } } });
+
+    // Per-item policy: product override, falling back to its seller's default.
+    const policies = order.items.map((it) => ({
+      returnable: it.product?.returnable ?? it.product?.seller?.returnable ?? true,
+      windowDays: it.product?.returnWindowDays ?? it.product?.seller?.returnWindowDays ?? 7,
+    }));
+    const returnable = policies.filter((p) => p.returnable);
+    if (returnable.length === 0) throw new BadRequestException('The item(s) in this order are not eligible for return.');
+    const windowDays = Math.max(...returnable.map((p) => p.windowDays));
+    const deliveredAt = order.events[0]?.createdAt;
+    if (deliveredAt && Date.now() > deliveredAt.getTime() + windowDays * 86_400_000) {
+      throw new BadRequestException(`The ${windowDays}-day return window for this order has passed.`);
+    }
+
+    const existing = await this.prisma.returnRequest.findFirst({ where: { orderId, status: { in: ['REQUESTED', 'APPROVED', 'PICKED_UP'] } } });
     if (existing) throw new BadRequestException('A return is already in progress for this order');
 
     const rr = await this.prisma.returnRequest.create({ data: { storeId: order.storeId, orderId, userId: user.id, type, reason } });
@@ -322,34 +350,55 @@ export class OrdersService {
     return { items: rows, pendingCount: pending };
   }
 
-  async resolveReturn(storeId: string, id: string, action: 'APPROVE' | 'REJECT', resolution?: string) {
+  async resolveReturn(storeId: string, id: string, action: 'APPROVE' | 'REJECT' | 'MARK_PICKED_UP' | 'REFUND', resolution?: string) {
     const rr = await this.prisma.returnRequest.findFirst({ where: { id, storeId }, include: { order: { include: { items: true } } } });
     if (!rr) throw new NotFoundException('Return request not found');
-    if (rr.status !== 'REQUESTED') throw new BadRequestException('This request is already resolved');
+    const order = rr.order;
 
     if (action === 'REJECT') {
+      if (rr.status !== 'REQUESTED') throw new BadRequestException('Only a requested return can be rejected');
       await this.prisma.returnRequest.update({ where: { id }, data: { status: 'REJECTED', resolution: resolution ?? null } });
-      void this.notifyOrder(rr.orderId, `Return update for ${rr.order.orderNumber}`, `Your return request could not be approved. ${resolution ?? ''}`);
-      return { updated: true };
+      void this.notifyOrder(order.id, `Return update for ${order.orderNumber}`, `Your return request could not be approved. ${resolution ?? ''}`.trim());
+      return { updated: true, status: 'REJECTED' as const };
     }
 
-    // Approve → mark order RETURNED, restock, flag refund.
+    if (action === 'APPROVE') {
+      if (rr.status !== 'REQUESTED') throw new BadRequestException('This return is already approved or resolved');
+      await this.prisma.returnRequest.update({ where: { id }, data: { status: 'APPROVED', resolution: resolution ?? null } });
+      void this.notifyOrder(order.id, `Return approved for ${order.orderNumber}`, 'Your return is approved. Our courier will collect the item — please keep it packed and ready.');
+      return { updated: true, status: 'APPROVED' as const };
+    }
+
+    if (action === 'MARK_PICKED_UP') {
+      if (rr.status !== 'APPROVED') throw new BadRequestException('Only an approved return can be marked as picked up');
+      await this.prisma.returnRequest.update({ where: { id }, data: { status: 'PICKED_UP', pickedUpAt: new Date() } });
+      void this.notifyOrder(order.id, `Item collected for ${order.orderNumber}`, 'We’ve collected your returned item. Your refund will be initiated shortly.');
+      return { updated: true, status: 'PICKED_UP' as const };
+    }
+
+    // REFUND — only after the item is back with us.
+    if (rr.status !== 'PICKED_UP') throw new BadRequestException('Refund can be initiated only after the item is picked up');
+    const refundAmount = Number(order.total);
+    let refundId: string | null = null;
+    if (order.paymentMethod === 'RAZORPAY' && order.paymentStatus === 'PAID' && order.paymentRef) {
+      const r = await this.payments.refund(order.paymentRef, refundAmount, { orderNumber: order.orderNumber, returnId: rr.id });
+      refundId = r.refundId;
+    }
     await this.prisma.$transaction(async (tx) => {
-      for (const it of rr.order.items) {
+      for (const it of order.items) {
         if (it.variantId) await tx.productVariant.update({ where: { id: it.variantId }, data: { stock: { increment: it.quantity } } });
       }
       await tx.order.update({
-        where: { id: rr.orderId },
+        where: { id: order.id },
         data: {
-          status: 'RETURNED',
-          paymentStatus: rr.order.paymentStatus === 'PAID' ? 'REFUNDED' : rr.order.paymentStatus,
-          events: { create: { status: 'RETURNED', note: 'Return approved & restocked' } },
+          status: 'RETURNED', paymentStatus: 'REFUNDED',
+          events: { create: { status: 'RETURNED', note: refundId ? `Refund processed (${refundId})` : 'Refund processed (COD / manual)' } },
         },
       });
-      await tx.returnRequest.update({ where: { id }, data: { status: 'COMPLETED', refunded: true, resolution: resolution ?? null } });
+      await tx.returnRequest.update({ where: { id }, data: { status: 'REFUNDED', refunded: true, refundId, refundAmount, refundedAt: new Date(), resolution: resolution ?? rr.resolution } });
     });
-    void this.notifyOrder(rr.orderId, `Return approved for ${rr.order.orderNumber}`, 'Your return is approved. Your refund will be processed to the original payment method.');
-    return { updated: true };
+    void this.notifyOrder(order.id, `Refund initiated for ${order.orderNumber}`, `Your refund of ₹${refundAmount.toLocaleString('en-IN')} has been initiated to your original payment method.`);
+    return { updated: true, status: 'REFUNDED' as const, refundId };
   }
 
   // ---------------- Admin ----------------
@@ -430,7 +479,9 @@ export class OrdersService {
     couponCode: string | null; paymentMethod: string; paymentStatus: string; deliveryMethod: string;
     estimatedDelivery: Date | null; shippingAddress: Prisma.JsonValue; notes: string | null; createdAt: Date;
     items?: unknown[]; events?: unknown[];
+    returns?: { id: string; type: string; reason: string; status: string; resolution: string | null; refundId: string | null; refundAmount: Prisma.Decimal | null; pickedUpAt: Date | null; refundedAt: Date | null; createdAt: Date }[];
   }) {
+    const rr = o.returns?.[0];
     return {
       id: o.id, orderNumber: o.orderNumber, status: o.status,
       subtotal: Number(o.subtotal), discount: Number(o.discount), taxAmount: Number(o.taxAmount),
@@ -439,6 +490,7 @@ export class OrdersService {
       deliveryMethod: o.deliveryMethod, estimatedDelivery: o.estimatedDelivery,
       shippingAddress: o.shippingAddress, notes: o.notes, createdAt: o.createdAt,
       items: o.items, events: o.events,
+      returnRequest: rr ? { id: rr.id, type: rr.type, reason: rr.reason, status: rr.status, resolution: rr.resolution, refundId: rr.refundId, refundAmount: rr.refundAmount != null ? Number(rr.refundAmount) : null, pickedUpAt: rr.pickedUpAt, refundedAt: rr.refundedAt, createdAt: rr.createdAt } : null,
     };
   }
 }

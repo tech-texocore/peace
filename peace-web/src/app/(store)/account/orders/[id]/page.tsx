@@ -9,6 +9,13 @@ import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const CANCELLABLE = ["PENDING", "CONFIRMED", "PACKED"];
+const RETURN_STEPS = [
+  { key: "REQUESTED", label: "Return requested" },
+  { key: "APPROVED", label: "Approved — pickup scheduled" },
+  { key: "PICKED_UP", label: "Item collected" },
+  { key: "REFUNDED", label: "Refund initiated" },
+];
+const returnStepIndex = (s: string): number => ({ REQUESTED: 0, APPROVED: 1, PICKED_UP: 2, REFUNDED: 3 } as Record<string, number>)[s] ?? 0;
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -66,7 +73,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
         <div className="flex gap-2">
           <Link href={`/account/orders/${order.id}/invoice`} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft"><FileText className="h-4 w-4" /> Invoice</Link>
-          {order.status === "DELIVERED" && (
+          {order.status === "DELIVERED" && (!order.returnRequest || order.returnRequest.status === "REJECTED") && (
             <button onClick={() => { setReturnOpen(true); setReturnDone(false); setReturnReason(""); setReturnErr(""); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft"><RotateCcw className="h-4 w-4" /> Return / Exchange</button>
           )}
           {CANCELLABLE.includes(order.status) && (
@@ -96,6 +103,32 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </li>
                 ))}
               </ol>
+            </section>
+          )}
+
+          {order.returnRequest && (
+            <section className="rounded-2xl border border-line p-5">
+              <h2 className="mb-1 flex items-center gap-2 font-medium"><RotateCcw className="h-5 w-5 text-accent" /> {order.returnRequest.type === "EXCHANGE" ? "Exchange" : "Return"} status</h2>
+              <p className="mb-4 text-xs text-muted">Reason: {order.returnRequest.reason}</p>
+              {order.returnRequest.status === "REJECTED" ? (
+                <p className="text-sm text-danger">Your request was declined.{order.returnRequest.resolution ? ` ${order.returnRequest.resolution}` : ""}</p>
+              ) : (
+                <ol className="space-y-4">
+                  {RETURN_STEPS.map((step, i) => {
+                    const reached = returnStepIndex(order.returnRequest!.status) >= i;
+                    return (
+                      <li key={step.key} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <span className={`h-3 w-3 rounded-full ${reached ? "bg-accent" : "bg-line"}`} />
+                          {i < RETURN_STEPS.length - 1 && <span className={`w-px flex-1 ${reached ? "bg-accent/40" : "bg-line"}`} />}
+                        </div>
+                        <p className={`-mt-1 pb-1 text-sm ${reached ? "font-medium" : "text-muted"}`}>{step.label}</p>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+              {order.returnRequest.refundAmount != null && <p className="mt-3 text-xs text-muted">Refund amount: <span className="font-medium text-ink">{inr(order.returnRequest.refundAmount)}</span>{order.returnRequest.refundId ? ` · ref ${order.returnRequest.refundId}` : ""}</p>}
             </section>
           )}
 
