@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { OrderStatus, ReturnStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PricingService } from '../discounts/pricing.service';
@@ -9,6 +10,8 @@ import type { CreateOrderDto } from './dto/order.dto';
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const CANCELLABLE: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PACKED'];
+// Unpaid online orders older than this are auto-cancelled and their reserved stock released.
+const ORDER_PAYMENT_WINDOW_MIN = 30;
 
 const STATUS_MESSAGE: Partial<Record<OrderStatus, string>> = {
   CONFIRMED: 'is confirmed and being prepared',
@@ -21,12 +24,44 @@ const STATUS_MESSAGE: Partial<Record<OrderStatus, string>> = {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     private readonly payments: PaymentsService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  // Release stock held by online orders that were never paid — otherwise abandoned
+  // checkouts would silently lock inventory forever. Runs every 10 minutes.
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async expireUnpaidOrders() {
+    const cutoff = new Date(Date.now() - ORDER_PAYMENT_WINDOW_MIN * 60_000);
+    const stale = await this.prisma.order.findMany({
+      where: { paymentMethod: 'RAZORPAY', status: 'PENDING', paymentStatus: 'PENDING', createdAt: { lt: cutoff } },
+      include: { items: true },
+    });
+    for (const order of stale) {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          for (const it of order.items) {
+            if (it.variantId) await tx.productVariant.update({ where: { id: it.variantId }, data: { stock: { increment: it.quantity } } });
+          }
+          await tx.order.update({
+            where: { id: order.id },
+            data: {
+              status: 'CANCELLED', paymentStatus: 'FAILED', cancelledAt: new Date(), cancelReason: 'Payment not completed in time',
+              events: { create: { status: 'CANCELLED', note: 'Auto-cancelled — payment not completed' } },
+            },
+          });
+        });
+      } catch (err) {
+        this.logger.error(`Failed to expire order ${order.orderNumber}`, err instanceof Error ? err.stack : String(err));
+      }
+    }
+    if (stale.length) this.logger.log(`Expired ${stale.length} unpaid order(s); reserved stock released`);
+  }
 
   // Order-lifecycle email (fire-and-forget; console provider until SMTP keys are set).
   private async notifyOrder(orderId: string, subject: string, line: string) {

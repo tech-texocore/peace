@@ -7,10 +7,11 @@ import type { AuthUser } from '../decorators/current-user.decorator';
 import { AuditService } from '../../modules/audit/audit.service';
 
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const ADMIN_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'STAFF']);
+// Only money & fulfilment events are audited — orders, payments and shipping/courier.
+// Catalog/marketing/config edits are intentionally NOT recorded here.
+const AUDITED_RESOURCES = new Set(['orders', 'payments', 'shipping', 'courier', 'bluedart']);
 const VERB: Record<string, string> = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
 
-// Auto-records every successful admin mutation. Customer/public writes are skipped.
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   constructor(
@@ -21,7 +22,8 @@ export class AuditInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest();
     const user = req.user as AuthUser | undefined;
-    const shouldAudit = MUTATING.has(req.method) && !!user?.role && ADMIN_ROLES.has(user.role);
+    const resourceForGate = (req.path || req.url).replace(/^\/api\//, '').split('/')[0] || '';
+    const shouldAudit = MUTATING.has(req.method) && !!user?.uid && AUDITED_RESOURCES.has(resourceForGate);
 
     if (!shouldAudit) return next.handle();
 

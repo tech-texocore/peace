@@ -37,6 +37,7 @@ export class OrdersController {
     return this.orders.myReturns(uid);
   }
 
+  @Audit('order.return-requested', 'order')
   @Post(':id/return')
   requestReturn(@CurrentUser('uid') uid: string, @Param('id') id: string, @Body() dto: RequestReturnDto) {
     return this.orders.requestReturn(uid, id, dto.type, dto.reason);
@@ -52,16 +53,19 @@ export class OrdersController {
     return this.orders.invoiceFor(uid, id);
   }
 
+  @Audit('order.placed', 'order')
   @Post()
   create(@CurrentUser('uid') uid: string, @Body() dto: CreateOrderDto) {
     return this.orders.create(uid, dto);
   }
 
+  @Audit('payment.captured', 'order')
   @Post(':id/verify-payment')
   verifyPayment(@CurrentUser('uid') uid: string, @Param('id') id: string, @Body() dto: VerifyPaymentDto) {
     return this.orders.verifyPayment(uid, id, dto.paymentId, dto.signature);
   }
 
+  @Audit('order.cancelled', 'order')
   @Post(':id/cancel')
   cancel(@CurrentUser('uid') uid: string, @Param('id') id: string, @Body() dto: CancelOrderDto) {
     return this.orders.cancel(uid, id, dto.reason);
