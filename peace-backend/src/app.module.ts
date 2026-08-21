@@ -11,6 +11,7 @@ import { PrismaModule } from './infra/prisma/prisma.module';
 import { FirebaseModule } from './infra/firebase/firebase.module';
 import { MediaModule } from './infra/media/media.module';
 import { NotificationsModule } from './infra/notifications/notifications.module';
+import { ShippingModule } from './infra/shipping/shipping.module';
 import { FirebaseService } from './infra/firebase/firebase.service';
 
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -81,6 +82,7 @@ import { ContactModule } from './modules/contact/contact.module';
     FirebaseModule,
     MediaModule,
     NotificationsModule,
+    ShippingModule,
     OtpModule,
 
     // Platform modules

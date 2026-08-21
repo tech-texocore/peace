@@ -9,7 +9,7 @@ import { AuditService } from '../../modules/audit/audit.service';
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 // Only money & fulfilment events are audited — orders, payments and shipping/courier.
 // Catalog/marketing/config edits are intentionally NOT recorded here.
-const AUDITED_RESOURCES = new Set(['orders', 'payments', 'shipping', 'courier', 'bluedart']);
+const AUDITED_RESOURCES = new Set(['orders', 'payments', 'shipping', 'courier', 'bharatship']);
 const VERB: Record<string, string> = { POST: 'create', PUT: 'update', PATCH: 'update', DELETE: 'delete' };
 
 @Injectable()

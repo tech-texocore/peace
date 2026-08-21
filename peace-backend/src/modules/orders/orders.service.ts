@@ -5,6 +5,8 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PricingService } from '../discounts/pricing.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { ShippingService } from '../../infra/shipping/shipping.service';
+import type { ShipmentInput } from '../../infra/shipping/shipping.types';
 import { resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
 
@@ -31,7 +33,70 @@ export class OrdersService {
     private readonly pricing: PricingService,
     private readonly payments: PaymentsService,
     private readonly notifications: NotificationsService,
+    private readonly shipping: ShippingService,
   ) {}
+
+  get shippingEnabled() { return this.shipping.configured; }
+
+  private shipmentInput(order: {
+    orderNumber: string; total: Prisma.Decimal; paymentMethod: string; paymentStatus: string;
+    shippingAddress: Prisma.JsonValue; items: { sku: string | null; name: string; price: Prisma.Decimal; quantity: number }[];
+  }): ShipmentInput {
+    const a = (order.shippingAddress ?? {}) as Record<string, string>;
+    const isCod = order.paymentMethod === 'COD';
+    return {
+      orderNumber: order.orderNumber,
+      paymentMode: isCod ? 'COD' : 'PPD',
+      codAmount: isCod ? Number(order.total) : 0,
+      totalAmount: Number(order.total),
+      recipient: {
+        name: a.recipientName ?? '',
+        phone: a.recipientPhone ?? '',
+        email: a.email ?? null,
+        address: [a.line1, a.line2, a.landmark, a.city, a.state].filter(Boolean).join(', '),
+        pincode: a.postalCode ?? '',
+      },
+      items: order.items.map((i) => ({ sku: i.sku ?? '', name: i.name, hsn: '', price: Number(i.price), quantity: i.quantity, taxPercent: 0 })),
+    };
+  }
+
+  // Admin: book the courier shipment (BharatShip) → save AWB → mark SHIPPED.
+  async shipOrder(storeId: string, orderId: string) {
+    const order = await this.prisma.order.findFirst({ where: { id: orderId, storeId }, include: { items: true } });
+    if (!order) throw new NotFoundException('Order not found');
+    if (order.awb) throw new BadRequestException('This order already has a shipment');
+    if (!['CONFIRMED', 'PACKED'].includes(order.status)) throw new BadRequestException('Only confirmed/packed orders can be shipped');
+    if (!this.shipping.configured) throw new BadRequestException('Courier is not configured. Add BharatShip credentials to enable automatic shipping.');
+
+    const result = await this.shipping.createShipment(this.shipmentInput(order));
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        awb: result.awb, courierName: result.courierName, status: 'SHIPPED',
+        events: { create: { status: 'SHIPPED', note: `Shipped via ${result.courierName ?? 'courier'} — AWB ${result.awb}` } },
+      },
+    });
+    void this.notifyOrder(order.id, `Order ${order.orderNumber} shipped`, `Your order is on its way${result.courierName ? ` with ${result.courierName}` : ''}. Track it with AWB ${result.awb}.`);
+    return { awb: result.awb, courierName: result.courierName };
+  }
+
+  async trackShipment(awb: string) {
+    if (!this.shipping.configured) throw new BadRequestException('Courier tracking is not available.');
+    return this.shipping.track(awb);
+  }
+
+  async trackForUser(uid: string, orderId: string) {
+    const user = await this.user(uid);
+    const order = await this.prisma.order.findFirst({ where: { id: orderId, userId: user.id }, select: { awb: true } });
+    if (!order?.awb) throw new BadRequestException('No shipment to track yet');
+    return this.trackShipment(order.awb);
+  }
+
+  async trackForAdmin(storeId: string, orderId: string) {
+    const order = await this.prisma.order.findFirst({ where: { id: orderId, storeId }, select: { awb: true } });
+    if (!order?.awb) throw new BadRequestException('No shipment to track yet');
+    return this.trackShipment(order.awb);
+  }
 
   // Release stock held by online orders that were never paid — otherwise abandoned
   // checkouts would silently lock inventory forever. Runs every 10 minutes.
@@ -274,6 +339,12 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
     if (!CANCELLABLE.includes(order.status)) throw new BadRequestException('This order can no longer be cancelled');
 
+    // Best-effort: cancel the courier shipment (never block the order cancellation on it).
+    if (order.awb && this.shipping.configured) {
+      try { await this.shipping.cancel(order.awb); }
+      catch (e) { this.logger.warn(`Courier cancel failed for ${order.orderNumber}: ${(e as Error).message}`); }
+    }
+
     // Refund a captured online payment at the gateway before flagging the order.
     let refundId: string | null = null;
     if (order.paymentMethod === 'RAZORPAY' && order.paymentStatus === 'PAID' && order.paymentRef) {
@@ -364,9 +435,15 @@ export class OrdersService {
 
     if (action === 'APPROVE') {
       if (rr.status !== 'REQUESTED') throw new BadRequestException('This return is already approved or resolved');
-      await this.prisma.returnRequest.update({ where: { id }, data: { status: 'APPROVED', resolution: resolution ?? null } });
-      void this.notifyOrder(order.id, `Return approved for ${order.orderNumber}`, 'Your return is approved. Our courier will collect the item — please keep it packed and ready.');
-      return { updated: true, status: 'APPROVED' as const };
+      // Book a reverse pickup so the courier collects the item (best-effort).
+      let reverseAwb: string | null = null;
+      if (this.shipping.configured) {
+        try { reverseAwb = (await this.shipping.createReverseShipment(this.shipmentInput(order))).awb; }
+        catch (e) { this.logger.warn(`Reverse pickup booking failed for ${order.orderNumber}: ${(e as Error).message}`); }
+      }
+      await this.prisma.returnRequest.update({ where: { id }, data: { status: 'APPROVED', resolution: resolution ?? null, reverseAwb } });
+      void this.notifyOrder(order.id, `Return approved for ${order.orderNumber}`, reverseAwb ? `Your return is approved. Our courier will collect the item (reverse AWB ${reverseAwb}) — please keep it packed and ready.` : 'Your return is approved. Our courier will collect the item — please keep it packed and ready.');
+      return { updated: true, status: 'APPROVED' as const, reverseAwb };
     }
 
     if (action === 'MARK_PICKED_UP') {
@@ -478,8 +555,9 @@ export class OrdersService {
     taxAmount: Prisma.Decimal; shippingFee: Prisma.Decimal; total: Prisma.Decimal; currency: string;
     couponCode: string | null; paymentMethod: string; paymentStatus: string; deliveryMethod: string;
     estimatedDelivery: Date | null; shippingAddress: Prisma.JsonValue; notes: string | null; createdAt: Date;
+    awb?: string | null; courierName?: string | null;
     items?: unknown[]; events?: unknown[];
-    returns?: { id: string; type: string; reason: string; status: string; resolution: string | null; refundId: string | null; refundAmount: Prisma.Decimal | null; pickedUpAt: Date | null; refundedAt: Date | null; createdAt: Date }[];
+    returns?: { id: string; type: string; reason: string; status: string; resolution: string | null; refundId: string | null; refundAmount: Prisma.Decimal | null; reverseAwb: string | null; pickedUpAt: Date | null; refundedAt: Date | null; createdAt: Date }[];
   }) {
     const rr = o.returns?.[0];
     return {
@@ -489,8 +567,9 @@ export class OrdersService {
       paymentMethod: o.paymentMethod, paymentStatus: o.paymentStatus,
       deliveryMethod: o.deliveryMethod, estimatedDelivery: o.estimatedDelivery,
       shippingAddress: o.shippingAddress, notes: o.notes, createdAt: o.createdAt,
+      awb: o.awb ?? null, courierName: o.courierName ?? null,
       items: o.items, events: o.events,
-      returnRequest: rr ? { id: rr.id, type: rr.type, reason: rr.reason, status: rr.status, resolution: rr.resolution, refundId: rr.refundId, refundAmount: rr.refundAmount != null ? Number(rr.refundAmount) : null, pickedUpAt: rr.pickedUpAt, refundedAt: rr.refundedAt, createdAt: rr.createdAt } : null,
+      returnRequest: rr ? { id: rr.id, type: rr.type, reason: rr.reason, status: rr.status, resolution: rr.resolution, refundId: rr.refundId, refundAmount: rr.refundAmount != null ? Number(rr.refundAmount) : null, reverseAwb: rr.reverseAwb, pickedUpAt: rr.pickedUpAt, refundedAt: rr.refundedAt, createdAt: rr.createdAt } : null,
     };
   }
 }

@@ -53,6 +53,11 @@ export class OrdersController {
     return this.orders.invoiceFor(uid, id);
   }
 
+  @Get('mine/:id/tracking')
+  myTracking(@CurrentUser('uid') uid: string, @Param('id') id: string) {
+    return this.orders.trackForUser(uid, id);
+  }
+
   @Audit('order.placed', 'order')
   @Post()
   create(@CurrentUser('uid') uid: string, @Body() dto: CreateOrderDto) {
@@ -102,6 +107,19 @@ export class OrdersController {
   @Patch('admin/:id/status')
   updateStatus(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateOrderStatusDto, @Query('storeId') storeId?: string) {
     return this.orders.updateStatus(this.resolveStoreId(user, storeId), id, dto.status, dto.note);
+  }
+
+  @RequirePermissions('orders.update')
+  @Audit('shipping.ship-order', 'order')
+  @Post('admin/:id/ship')
+  ship(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query('storeId') storeId?: string) {
+    return this.orders.shipOrder(this.resolveStoreId(user, storeId), id);
+  }
+
+  @RequirePermissions('orders.read')
+  @Get('admin/:id/tracking')
+  adminTracking(@CurrentUser() user: AuthUser, @Param('id') id: string, @Query('storeId') storeId?: string) {
+    return this.orders.trackForAdmin(this.resolveStoreId(user, storeId), id);
   }
 
   private resolveStoreId(user: AuthUser, storeId?: string): string {

@@ -93,11 +93,14 @@ export default () => ({
       },
     },
     courier: {
-      provider: process.env.COURIER_PROVIDER ?? 'bluedart',
-      bluedart: {
-        licenseKey: process.env.BLUEDART_LICENSE_KEY,
-        loginId: process.env.BLUEDART_LOGIN_ID,
-        apiBase: process.env.BLUEDART_API_BASE,
+      provider: process.env.COURIER_PROVIDER ?? 'bharatship',
+      bharatship: {
+        email: process.env.BHARATSHIP_EMAIL,
+        password: process.env.BHARATSHIP_PASSWORD,
+        apiBase: process.env.BHARATSHIP_API_BASE ?? 'https://app.bharatship.com',
+        pickupAddressId: process.env.BHARATSHIP_PICKUP_ADDRESS_ID,
+        courierCode: process.env.BHARATSHIP_COURIER_CODE,
+        defaultWeightGrams: process.env.BHARATSHIP_DEFAULT_WEIGHT_GRAMS,
       },
     },
   },

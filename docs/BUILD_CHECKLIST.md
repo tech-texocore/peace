@@ -9,7 +9,7 @@ phased so nothing is buried inside the done work.
 
 Status snapshot: **Foundation · Admin core · RBAC · Site-config · Theme · Audit** ✓ · **Phase 2 Catalog** ✓ · **Search + PLP/PDP** ✓ · **Reviews/Q&A** ✓ · **Promotions engine** ✓ · **Cart** ✓ · **Phase 3 Checkout → Orders → Payments** ✓ (COD live + Razorpay sandbox-ready, order lifecycle, GST invoice, customer + admin order management) · **Wishlist** ✓ · **Core ops** ✓ (order emails, Returns/RMA, analytics dashboard, inventory + back-in-stock, customers, server cart, contact) · **Referential-integrity delete guards** ✓ · **Customer password reset + change** ✓ · **Admin auto-educate/plain-language + mobile nav + sortable tables** ✓.
 Demo data: `npm run seed` (or `npx prisma db seed`) — one standard, minimal-but-feature-complete seed in `scripts/seed.js`; demo content is out of app code, a fresh store starts from a neutral default config. Client focus now: **white shirts**.
-**Next (needs client keys):** Razorpay live · BlueDart shipping · SMS/WhatsApp real send. **Free-now next:** SEO structured data · GST reports.
+**Next (needs client keys):** Razorpay live · BharatShip shipping · SMS/WhatsApp real send. **Free-now next:** SEO structured data · GST reports.
 
 ---
 
@@ -34,7 +34,7 @@ Demo data: `npm run seed` (or `npx prisma db seed`) — one standard, minimal-bu
 - [x] Admin user management (create/edit/disable/delete, assign role+store) — temp-password hint
 - [x] Site Config editor (all home sections + per-section visibility + publish)
 - [x] **Site Settings** (name/tagline/currency · contact & social · SEO defaults) — platform-level, permission-gated
-- [x] **Integration keys screen** (Razorpay/BlueDart/WhatsApp/SMS) — secrets masked on read, preserved on blank update; per-provider key-source hints
+- [x] **Integration keys screen** (Razorpay/BharatShip/WhatsApp/SMS) — secrets masked on read, preserved on blank update; per-provider key-source hints
 - [x] **Reusable `AddressFields`** (PIN-lookup) — shared by customer address book + seller pickup
 - [x] **Staff role** via RBAC (seeded Staff role, limited perms)
 - [x] **Audit logs + activity trail** — `AuditLog` + global interceptor auto-logs every admin mutation (actor/action/entity/status/IP); `/admin/audit` humanized (e.g. "Updated Product") + Success/Failed pills, filters + pagination
@@ -177,8 +177,9 @@ Items needing the client's paid keys are marked **(needs keys)** and are detaile
 ## Payments (Razorpay)
 - [ ] **Refunds** (full/partial) via gateway + status — *cancel/return already flags `REFUNDED`; gateway call = when keys live* **(needs keys)**
 
-## Shipping / Courier (BlueDart)
-- [ ] BlueDart adapter — serviceability by pincode, rate, label/AWB, pickup **(needs keys + build)**
+## Shipping / Courier (BharatShip)
+- [x] **BharatShip adapter built** — admin "Ship" books a shipment (AWB), live tracking on the order, cancel, and **reverse pickup for returns**; auth-token cached. Live-verified against `app.bharatship.com` **(needs client keys to activate)**
+- [ ] Serviceability by pincode + live rate at checkout (rate-calculator API) — enhancement
 - [ ] Shipping zones & rates, free-shipping rules
 - [ ] Live tracking timeline synced to order status
 
@@ -224,5 +225,5 @@ Route) and commission / payout reports. Out of current scope.
 
 ## Roadmap
 - **Done** → Foundation · RBAC / admin / theme / audit · Catalog · PLP/PDP · Promotions · Cart · Checkout · Razorpay (sandbox) · GST invoice · Orders + stock · Reviews · Wishlist · Returns · Inventory + back-in-stock · Customers · Campaigns · Subscriptions · Notification preferences · Abandoned-cart + price-drop
-- **Before launch** → Refunds (gateway) · BlueDart shipping / tracking · WhatsApp / SMS real send · SEO · perf / a11y / monitoring · legal content · deploy — *see checklist above; client keys in [CLIENT_INTEGRATIONS.md](CLIENT_INTEGRATIONS.md)*
+- **Before launch** → Refunds (gateway) · BharatShip shipping / tracking · WhatsApp / SMS real send · SEO · perf / a11y / monitoring · legal content · deploy — *see checklist above; client keys in [CLIENT_INTEGRATIONS.md](CLIENT_INTEGRATIONS.md)*
 - **Future / optional** → enhancements list above · multi-vendor marketplace

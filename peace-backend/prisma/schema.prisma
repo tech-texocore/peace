@@ -684,6 +684,8 @@ model Order {
 
   cancelReason String?
   cancelledAt  DateTime?
+  awb          String?
+  courierName  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -723,6 +725,7 @@ model ReturnRequest {
   refunded   Boolean      @default(false)
   refundId   String?
   refundAmount Decimal?   @db.Decimal(10, 2)
+  reverseAwb String?
   pickedUpAt DateTime?
   refundedAt DateTime?
   createdAt  DateTime     @default(now())

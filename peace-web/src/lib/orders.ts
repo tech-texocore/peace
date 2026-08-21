@@ -25,10 +25,11 @@ export interface Order {
   couponCode: string | null; paymentMethod: PaymentMethod; paymentStatus: string;
   deliveryMethod: string; estimatedDelivery: string | null; shippingAddress: ShippingAddress;
   notes: string | null; createdAt: string; items: OrderItem[]; events?: OrderEvent[];
+  awb?: string | null; courierName?: string | null;
   returnRequest?: {
     id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: ReturnStatus;
     resolution: string | null; refundId: string | null; refundAmount: number | null;
-    pickedUpAt: string | null; refundedAt: string | null; createdAt: string;
+    reverseAwb: string | null; pickedUpAt: string | null; refundedAt: string | null; createdAt: string;
   } | null;
 }
 
@@ -62,6 +63,12 @@ export interface ReturnRequestT {
 export const requestReturn = (orderId: string, type: "RETURN" | "EXCHANGE", reason: string) =>
   api.post<{ id: string; status: ReturnStatus }>(`/orders/${orderId}/return`, { type, reason }, { auth: true });
 export const getMyReturns = () => api.get<ReturnRequestT[]>("/orders/mine/returns", { auth: true });
+
+export interface TrackingResult {
+  awb: string; status: string; courierName?: string | null;
+  events: { status: string; location?: string | null; time?: string | null }[];
+}
+export const getMyTracking = (id: string) => api.get<TrackingResult>(`/orders/mine/${id}/tracking`, { auth: true });
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING: "Pending", CONFIRMED: "Confirmed", PACKED: "Packed", SHIPPED: "Shipped",

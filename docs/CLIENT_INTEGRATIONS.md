@@ -84,16 +84,18 @@ Browser / app push. In-app notification bell already works without this.
 
 - **Status:** 🟡 adapter shell ready; implement `ClientPushProvider.send()`.
 
-## 7. 🔴 Courier / shipping — BlueDart
-Serviceability by pincode, live rates, AWB / label generation, pickup scheduling, live tracking timeline. **Today fulfilment status is set manually in admin** (packed → shipped → delivered).
+## 7. 🟢 Courier / shipping — BharatShip
+One-click shipping from admin: book a shipment (AWB), live tracking on the order, cancel, and **reverse pickup for returns**. Without keys, admin still moves fulfilment manually (packed → shipped → delivered).
 
 | Client provides | Where |
 |---|---|
-| BlueDart API account + license | — |
-| `BLUEDART_LICENSE_KEY`, `BLUEDART_LOGIN_ID`, `BLUEDART_API_BASE` | backend `.env` |
-| Set `COURIER_PROVIDER=bluedart` | backend `.env` |
+| BharatShip account (app.bharatship.com) — login email + password | — |
+| A pickup **warehouse** created in BharatShip (its id) | — |
+| `BHARATSHIP_EMAIL`, `BHARATSHIP_PASSWORD` | backend `.env` |
+| `BHARATSHIP_PICKUP_ADDRESS_ID` (warehouse id) | backend `.env` |
+| `BHARATSHIP_API_BASE` (default `https://app.bharatship.com`), optional `BHARATSHIP_COURIER_CODE` | backend `.env` |
 
-- **Status:** 🔴 config placeholders exist, but the **courier adapter must be built** (serviceability, rate, label, pickup, tracking). This is the largest remaining code item, not a config-only switch. Any courier (Delhivery, Shiprocket, etc.) can slot into the same adapter if the client prefers a different one.
+- **Status:** 🟢 adapter **built and live-verified** against `app.bharatship.com` (auth-token, create-order, tracking, cancel, create-reverse-order). Add the client's login + pickup warehouse id → the admin **"Ship with BharatShip"** button books real shipments. Insurance/weight/dimensions use sensible defaults the client can tune.
 
 ## 8. 🔴 Hosting / deployment
 Going live.
@@ -131,6 +133,6 @@ Customer/admin login (email-password + Google).
 | 4 | SMS | 🟡 keys + wire `send()` + DLT |
 | 5 | WhatsApp | 🟡 keys + wire `send()` + Meta templates |
 | 6 | Push (FCM) | 🟡 keys + wire `send()` (optional) |
-| 7 | BlueDart courier | 🔴 full adapter build |
+| 7 | BharatShip courier | 🟢 keys only (adapter built) |
 | 8 | Hosting / domain | 🔴 accounts + deploy config |
 | 9 | Firebase Auth | ✅ done (confirm ownership for prod) |

@@ -3,8 +3,8 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Loader2, CheckCircle2, FileText, MapPin, Package, XCircle, RotateCcw, X } from "lucide-react";
-import { getMyOrder, cancelOrder, requestReturn, inr, ORDER_STATUS_LABEL, type Order } from "@/lib/orders";
+import { Loader2, CheckCircle2, FileText, MapPin, Package, XCircle, RotateCcw, X, Truck } from "lucide-react";
+import { getMyOrder, cancelOrder, requestReturn, getMyTracking, inr, ORDER_STATUS_LABEL, type Order, type TrackingResult } from "@/lib/orders";
 import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
@@ -29,9 +29,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [returnReason, setReturnReason] = useState("");
   const [returnDone, setReturnDone] = useState(false);
   const [returnErr, setReturnErr] = useState("");
+  const [tracking, setTracking] = useState<TrackingResult | null>(null);
+  const [trackingBusy, setTrackingBusy] = useState(false);
 
   const load = () => getMyOrder(id).then(setOrder).catch(() => setNotFound(true));
   useEffect(() => { load(); }, [id]);
+
+  async function loadTracking() {
+    setTrackingBusy(true);
+    try { setTracking(await getMyTracking(id)); }
+    catch (e) { setTracking({ awb: "", status: e instanceof Error ? e.message : "Tracking unavailable", events: [] }); }
+    finally { setTrackingBusy(false); }
+  }
 
   async function submitReturn() {
     if (returnReason.trim().length < 3) { setReturnErr("Please tell us why"); return; }
@@ -103,6 +112,30 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </li>
                 ))}
               </ol>
+            </section>
+          )}
+
+          {order.awb && (
+            <section className="rounded-2xl border border-line p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="flex items-center gap-2 font-medium"><Truck className="h-5 w-5 text-accent" /> Shipment</h2>
+                  <p className="mt-1 text-xs text-muted">{order.courierName ? `${order.courierName} · ` : ""}AWB <span className="font-mono text-ink">{order.awb}</span></p>
+                </div>
+                <button onClick={loadTracking} disabled={trackingBusy} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft disabled:opacity-50">{trackingBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Track live</button>
+              </div>
+              {tracking && (
+                <div className="mt-4 border-t border-line pt-4">
+                  <p className="text-sm font-medium">Current status: {tracking.status}</p>
+                  {tracking.events.length > 0 && (
+                    <ol className="mt-3 space-y-2">
+                      {tracking.events.slice(0, 8).map((e, i) => (
+                        <li key={i} className="text-xs text-muted"><span className="text-ink">{e.status}</span>{e.location ? ` · ${e.location}` : ""}{e.time ? ` · ${e.time}` : ""}</li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

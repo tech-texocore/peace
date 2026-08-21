@@ -52,7 +52,7 @@ that lights up every screen. Demo content lives only in `scripts/seed.js`, never
 
 ## Client-supplied integrations
 
-Payments (Razorpay), media storage (S3), email / SMS / WhatsApp, courier (BlueDart) and
+Payments (Razorpay), media storage (S3), email / SMS / WhatsApp, courier (BharatShip) and
 hosting all sit behind swappable adapters — COD, in-app notifications and dev-console
 messaging work today without any keys. What the client must provide (accounts, API keys,
 official logo & brand assets) is tracked in **[`docs/CLIENT_INTEGRATIONS.md`](docs/CLIENT_INTEGRATIONS.md)**

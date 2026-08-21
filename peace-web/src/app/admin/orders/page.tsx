@@ -13,7 +13,7 @@ import { PageHeader } from "@/components/admin/page-header";
 import { SubNav, ORDER_TABS } from "@/components/admin/sub-nav";
 import { EmptyState } from "@/components/admin/empty-state";
 import { useSort, SortTh } from "@/components/admin/sortable";
-import { inr, ORDER_STATUS_LABEL, type Order, type OrderStatus } from "@/lib/orders";
+import { inr, ORDER_STATUS_LABEL, type Order, type OrderStatus, type TrackingResult } from "@/lib/orders";
 
 type Customer = { name: string | null; email: string; phone: string | null };
 type AdminOrder = Order & { customer: string | Customer };
@@ -59,6 +59,7 @@ function OrdersInner() {
   const [detail, setDetail] = useState<AdminOrder | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [actionErr, setActionErr] = useState("");
 
   const q = storeId ? `storeId=${storeId}` : "";
   const canUpdate = hasPermission("orders.update");
@@ -107,6 +108,15 @@ function OrdersInner() {
       await openDetail(detail.id); await load();
     } finally { setBusy(false); }
   }
+
+  async function ship() {
+    if (!detail) return;
+    setBusy(true); setActionErr("");
+    try { await api.post(`/orders/admin/${detail.id}/ship?${q}`, {}, { auth: true }); await openDetail(detail.id); await load(); }
+    catch (e) { setActionErr(e instanceof Error ? e.message : "Could not create shipment"); }
+    finally { setBusy(false); }
+  }
+  const track = (oid: string) => api.get<TrackingResult>(`/orders/admin/${oid}/tracking?${q}`, { auth: true });
 
   function clearFilters() { setSearch(""); setPayMethod(""); setPayStatus(""); setFrom(""); setTo(""); }
 
@@ -182,7 +192,7 @@ function OrdersInner() {
         </div>
       )}
 
-      {detail && <OrderDrawer order={detail} onClose={() => setDetail(null)} canUpdate={canUpdate} busy={busy} note={note} setNote={setNote} setStatus={setStatus} />}
+      {detail && <OrderDrawer order={detail} onClose={() => setDetail(null)} canUpdate={canUpdate} busy={busy} note={note} setNote={setNote} setStatus={setStatus} ship={ship} track={track} actionErr={actionErr} />}
     </div>
   );
 }
@@ -191,10 +201,15 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
   return <div className={cn("flex justify-between", strong ? "font-semibold" : "text-muted")}><span>{label}</span><span className={strong ? "" : "text-ink"}>{value}</span></div>;
 }
 
-function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus }: {
+function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus, ship, track, actionErr }: {
   order: AdminOrder; onClose: () => void; canUpdate: boolean; busy: boolean; note: string; setNote: (v: string) => void; setStatus: (s: OrderStatus) => void;
+  ship: () => void; track: (oid: string) => Promise<TrackingResult>; actionErr: string;
 }) {
   const c = typeof order.customer === "string" ? { name: order.customer, email: "", phone: "" } : order.customer;
+  const [trk, setTrk] = useState<TrackingResult | null>(null);
+  const [trkBusy, setTrkBusy] = useState(false);
+  const doTrack = async () => { setTrkBusy(true); try { setTrk(await track(order.id)); } catch (e) { setTrk({ awb: order.awb ?? "", status: e instanceof Error ? e.message : "Tracking unavailable", events: [] }); } finally { setTrkBusy(false); } };
+  const canShip = !order.awb && (order.status === "CONFIRMED" || order.status === "PACKED");
   const a = order.shippingAddress;
   const editable = !["CANCELLED", "RETURNED", "DELIVERED"].includes(order.status);
   const events = order.events ?? [];
@@ -295,12 +310,23 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
           </div>
         </div>
 
+        {order.awb && (
+          <div className="border-t border-line px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm"><Truck className="mr-1.5 inline h-4 w-4 text-accent" />{order.courierName ? `${order.courierName} · ` : ""}AWB <span className="font-mono">{order.awb}</span></p>
+              <button onClick={doTrack} disabled={trkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-medium hover:bg-accent-soft disabled:opacity-50">{trkBusy ? "Tracking…" : "Track"}</button>
+            </div>
+            {trk && <p className="mt-2 text-xs text-muted">Status: <span className="text-ink">{trk.status}</span>{trk.events[0]?.location ? ` · ${trk.events[0].location}` : ""}</p>}
+          </div>
+        )}
+
         {canUpdate && editable && (
           <div className="border-t border-line px-5 py-4">
             <p className="mb-2 text-sm font-medium">Update status</p>
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the timeline (optional)" className="mb-2 h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent" />
             <div className="flex flex-wrap gap-2">
-              {NEXT[order.status] && <button onClick={() => setStatus(NEXT[order.status]!)} disabled={busy} className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50">Mark as {ORDER_STATUS_LABEL[NEXT[order.status]!]}</button>}
+              {canShip && <button onClick={ship} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50"><Truck className="h-3.5 w-3.5" /> Ship with BharatShip</button>}
+              {NEXT[order.status] && NEXT[order.status] !== "SHIPPED" && <button onClick={() => setStatus(NEXT[order.status]!)} disabled={busy} className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50">Mark as {ORDER_STATUS_LABEL[NEXT[order.status]!]}</button>}
               <button onClick={() => setStatus("CANCELLED")} disabled={busy} className="rounded-full border border-line px-4 py-2 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50">Cancel order</button>
               <div className="relative">
                 <select value="" onChange={(e) => e.target.value && setStatus(e.target.value as OrderStatus)} disabled={busy} className="h-full appearance-none rounded-full border border-line bg-canvas pl-3 pr-8 py-2 text-xs outline-none">
@@ -310,6 +336,7 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
               </div>
             </div>
+            {actionErr && <p className="mt-2 text-xs text-danger">{actionErr}</p>}
           </div>
         )}
       </div>
