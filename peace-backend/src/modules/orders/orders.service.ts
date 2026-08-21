@@ -131,10 +131,14 @@ export class OrdersService {
   // Order-lifecycle email (fire-and-forget; console provider until SMTP keys are set).
   private async notifyOrder(orderId: string, subject: string, line: string) {
     try {
-      const o = await this.prisma.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, total: true, user: { select: { email: true, name: true } } } });
-      if (!o?.user.email) return;
-      const html = `<p>Hi ${o.user.name ?? 'there'},</p><p>${line}</p><p>Order <b>${o.orderNumber}</b> · Total ₹${Number(o.total).toLocaleString('en-IN')}</p><p>— Peace</p>`;
-      await this.notifications.sendEmail(o.user.email, subject, html);
+      const o = await this.prisma.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, total: true, storeId: true, userId: true, user: { select: { email: true, name: true } } } });
+      if (!o) return;
+      // In-app bell notification — order updates are transactional (always delivered).
+      await this.prisma.notification.create({ data: { storeId: o.storeId, userId: o.userId, title: subject, body: line, deepLink: `/account/orders/${orderId}` } });
+      if (o.user.email) {
+        const html = `<p>Hi ${o.user.name ?? 'there'},</p><p>${line}</p><p>Order <b>${o.orderNumber}</b> · Total ₹${Number(o.total).toLocaleString('en-IN')}</p><p>— Peace</p>`;
+        await this.notifications.sendEmail(o.user.email, subject, html);
+      }
     } catch { /* notifications must never block the order flow */ }
   }
 
