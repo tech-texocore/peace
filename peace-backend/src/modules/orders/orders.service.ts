@@ -528,6 +528,12 @@ export class OrdersService {
     const order = await this.prisma.order.findFirst({ where: { id, storeId }, include: { items: true } });
     if (!order) throw new NotFoundException('Order not found');
 
+    // If the admin cancels a shipped order, cancel the courier shipment too (best-effort).
+    if (status === 'CANCELLED' && order.status !== 'CANCELLED' && order.awb && this.shipping.configured) {
+      try { await this.shipping.cancel(order.awb); }
+      catch (e) { this.logger.warn(`Courier cancel failed for ${order.orderNumber}: ${(e as Error).message}`); }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       // Restock when an order is cancelled/returned by the admin.
       if ((status === 'CANCELLED' || status === 'RETURNED') && !['CANCELLED', 'RETURNED'].includes(order.status)) {
