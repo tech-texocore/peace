@@ -43,7 +43,7 @@ export class RazorpayProvider implements PaymentProvider {
       body: JSON.stringify({ amount: amountPaise, speed: 'normal', notes: notes ?? {} }),
     });
     const body = (await res.json()) as { id?: string; amount?: number; status?: string; error?: { description?: string } };
-    if (!res.ok || !body.id) throw new BadRequestException(body.error?.description ?? 'Refund could not be processed at the gateway.');
+    if (!res.ok || !body.id) throw new BadRequestException(body.error?.description ? `Refund declined by Razorpay: ${body.error.description} (a new account may need KYC activation + settled balance).` : 'Refund could not be processed at the gateway.');
     return { refundId: body.id, amount: body.amount ?? amountPaise, status: body.status ?? 'processed' };
   }
 
