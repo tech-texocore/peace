@@ -224,6 +224,27 @@ crontab -e
 
 Restore: `pg_restore -U peace -h localhost -d peace --clean <file>.dump` and `rclone copy gdrive:peace-backups/uploads /var/www/peace/uploads`.
 
+### Automatic deploys (CI/CD)
+
+`.github/workflows/ci-cd.yml` runs on GitHub Actions (free for this repo size):
+- **Every pull request and push** — installs, type-checks and builds both apps. A broken change fails here, never on the server.
+- **Every push to `main` that passes** — SSHes into the VPS as `peace` and runs `deploy/update.sh`.
+
+One-time setup (server, as `peace`):
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/ci_deploy -N "" -C github-actions
+echo "command=\". /home/peace/.nvm/nvm.sh \&\& /var/www/peace/app/deploy/update.sh\",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty $(cat ~/.ssh/ci_deploy.pub)" >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+```
+
+The key can only run the deploy script — no shell, no other commands. Then in GitHub → repo → Settings → Secrets and variables → Actions, add:
+
+| Secret | Value |
+|---|---|
+| `VPS_HOST` | server IP |
+| `VPS_SSH_KEY` | contents of `~/.ssh/ci_deploy` (then delete that file from the server) |
+| `VPS_HOST_KEY` | `ssh-ed25519 …` part of `/etc/ssh/ssh_host_ed25519_key.pub` |
+
 ### Updates
 
 ```bash

@@ -1,0 +1,61 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Type-check and build
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            peace-backend/package-lock.json
+            peace-web/package-lock.json
+      - name: Backend
+        working-directory: peace-backend
+        run: |
+          npm ci
+          npx prisma generate
+          npx tsc --noEmit -p tsconfig.json
+          npm run build
+      - name: Web
+        working-directory: peace-web
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+
+  deploy:
+    name: Deploy to VPS
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Run deploy/update.sh on the server
+        env:
+          HOST: ${{ secrets.VPS_HOST }}
+          HOST_KEY: ${{ secrets.VPS_HOST_KEY }}
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s %s\n' "$HOST" "$HOST_KEY" > ~/.ssh/known_hosts
+          # The server key only allows running deploy/update.sh
+          ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes peace@"$HOST"

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Load Node (nvm) first — nvm is not safe under set -u
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
 set -euo pipefail
 cd /var/www/peace/app
 git pull
