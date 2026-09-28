@@ -12,14 +12,7 @@
 //  Admins (Firebase) are seeded separately: npm run seed:admins
 //  Idempotent: clears this store's demo data first, then re-seeds.
 // ─────────────────────────────────────────────────────────────────────────────
-const fs = require('fs');
-const path = require('path');
-if (!process.env.DATABASE_URL) {
-  try {
-    const m = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').match(/^DATABASE_URL=(.+)$/m);
-    if (m) process.env.DATABASE_URL = m[1].trim().replace(/^["']|["']$/g, '');
-  } catch {}
-}
+require('./load-env');
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });

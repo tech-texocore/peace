@@ -7,6 +7,7 @@ import { Loader2, CheckCircle2, FileText, MapPin, Package, XCircle, RotateCcw, X
 import { getMyOrder, cancelOrder, requestReturn, getMyTracking, inr, ORDER_STATUS_LABEL, type Order, type TrackingResult } from "@/lib/orders";
 import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { CustomizationSummary } from "@/components/ui/customization-summary";
 
 const CANCELLABLE = ["PENDING", "CONFIRMED", "PACKED"];
 const RETURN_STEPS = [
@@ -176,9 +177,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     <p className="font-medium">{it.name}</p>
                     {it.sku && <p className="text-xs text-muted">{it.sku}</p>}
                     <p className="text-xs text-muted">Qty {it.quantity}</p>
-                    {it.customization && Object.keys(it.customization).length > 0 && (
-                      <p className="mt-0.5 text-xs text-muted">{Object.entries(it.customization).map(([k, v]) => `${k}: ${v}`).join(", ")}</p>
-                    )}
+                    <CustomizationSummary values={it.customization} />
                   </div>
                   <p className="text-sm font-medium">{inr((it.price ?? 0) * it.quantity)}</p>
                 </div>

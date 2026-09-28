@@ -16,18 +16,24 @@ export class OtpService {
     return createHash('sha256').update(code).digest('hex');
   }
 
-  async request(phone: string, purpose = 'phone_verify') {
+  // Creates a fresh code for a phone number or email; any earlier code stops working.
+  async issue(target: string, purpose: string): Promise<{ code: string; ttl: number }> {
     const length = this.config.get<number>('otp.length')!;
     const ttl = this.config.get<number>('otp.ttlSeconds')!;
     const code = String(randomInt(0, 10 ** length)).padStart(length, '0');
 
     await this.prisma.otpChallenge.updateMany({
-      where: { phone, purpose, consumed: false },
+      where: { phone: target, purpose, consumed: false },
       data: { consumed: true },
     });
     await this.prisma.otpChallenge.create({
-      data: { phone, purpose, codeHash: this.hash(code), expiresAt: new Date(Date.now() + ttl * 1000) },
+      data: { phone: target, purpose, codeHash: this.hash(code), expiresAt: new Date(Date.now() + ttl * 1000) },
     });
+    return { code, ttl };
+  }
+
+  async request(phone: string, purpose = 'phone_verify') {
+    const { code, ttl } = await this.issue(phone, purpose);
 
     await this.notifications.sendSms(phone, `Your Peace verification code is ${code}. Valid for ${ttl / 60} minutes.`);
 

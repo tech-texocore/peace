@@ -1,30 +1,27 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { IntegrationsService } from '../integrations/integrations.service';
 import type { ShipmentInput, ShipmentResult, TrackingResult } from './shipping.types';
 
 // BharatShip (app.bharatship.com) courier aggregator — REST + Bearer token.
 // Auth: POST /api/authToken {email,password} -> { token }. Token cached until near expiry.
-// No SDK; goes live the moment the client's BHARATSHIP_EMAIL/PASSWORD are in .env.
+// Keys come from admin → Integrations; a save there takes effect immediately.
 @Injectable()
 export class BharatShipProvider {
   readonly name = 'bharatship';
   private readonly logger = new Logger(BharatShipProvider.name);
-  private readonly email?: string;
-  private readonly password?: string;
-  private readonly apiBase: string;
-  private readonly pickupAddressId?: string;
-  private readonly defaultWeightGrams: number;
-  private readonly courierCode?: string;
   private token: { value: string; expiresAt: number } | null = null;
 
-  constructor(config: ConfigService) {
-    this.email = config.get<string>('integrations.courier.bharatship.email');
-    this.password = config.get<string>('integrations.courier.bharatship.password');
-    this.apiBase = (config.get<string>('integrations.courier.bharatship.apiBase') ?? 'https://app.bharatship.com').replace(/\/$/, '');
-    this.pickupAddressId = config.get<string>('integrations.courier.bharatship.pickupAddressId');
-    this.defaultWeightGrams = Number(config.get<string>('integrations.courier.bharatship.defaultWeightGrams')) || 500;
-    this.courierCode = config.get<string>('integrations.courier.bharatship.courierCode') || undefined;
+  constructor(private readonly integrations: IntegrationsService) {
+    integrations.onChange(() => (this.token = null));
   }
+
+  private get s() { return this.integrations.current.bharatship; }
+  private get email() { return this.s.email; }
+  private get password() { return this.s.password; }
+  private get apiBase() { return (this.s.apiBase || 'https://app.bharatship.com').replace(/\/$/, ''); }
+  private get pickupAddressId() { return this.s.pickupAddressId; }
+  private get defaultWeightGrams() { return Number(this.s.defaultWeightGrams) || 500; }
+  private get courierCode() { return this.s.courierCode || undefined; }
 
   get configured() { return Boolean(this.email && this.password && this.pickupAddressId); }
 

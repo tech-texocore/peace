@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ShoppingBag, Truck, RotateCcw, ShieldCheck, Store, Ruler, X, Minus, Plus, Tag, Share2, Copy, Expand, ChevronLeft, ChevronRight, Wand2 } from "lucide-react";
+import { Check, ShoppingBag, Truck, RotateCcw, ShieldCheck, Store, Ruler, X, Minus, Plus, Tag, Share2, Copy, Expand, ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/lib/api/client";
+import { firebaseAuth } from "@/lib/firebase/client";
 import { useCart } from "@/lib/cart";
 import { ProductCard } from "@/components/store/product-card";
 import { RecentlyViewed } from "@/components/store/recently-viewed";
@@ -350,7 +351,7 @@ export function ProductDetailView({ product: p, offers = [] }: { product: Produc
                       <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-muted" />
                     </div>
                   ) : cf.type === "image" ? (
-                    <input type="file" accept="image/*" className="text-xs text-muted" />
+                    <CustomImageInput value={custom[cf.label]} onChange={(url) => setCustom((c) => ({ ...c, [cf.label]: url }))} />
                   ) : (
                     <input type={cf.type === "number" ? "number" : "text"} value={custom[cf.label] ?? ""} onChange={(e) => setCustom((c) => ({ ...c, [cf.label]: e.target.value }))} className="h-11 w-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent" />
                   )}
@@ -400,6 +401,45 @@ export function ProductDetailView({ product: p, offers = [] }: { product: Produc
             <p className="mt-3 text-xs text-muted">Measurements are in inches. If you’re between sizes, we suggest sizing up.</p>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Personalisation photo: uploaded straight away so the link travels with the cart line.
+function CustomImageInput({ value, onChange }: { value?: string; onChange: (url: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(file?: File) {
+    if (!file) return;
+    if (!firebaseAuth?.currentUser) return setError("signin");
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.upload<{ url: string }>("/media/customer-upload", file, { auth: true });
+      onChange(res.url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        {value && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="" className="h-14 w-14 rounded-lg border border-line object-cover" />
+        )}
+        <input type="file" accept="image/*" disabled={busy} onChange={(e) => pick(e.target.files?.[0])} className="text-xs text-muted" />
+        {busy && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
+      </div>
+      {error === "signin" ? (
+        <p className="text-xs text-muted">Please <Link href="/account" className="font-medium text-accent hover:underline">sign in</Link> to upload a photo.</p>
+      ) : (
+        error && <p className="text-xs text-danger">{error}</p>
       )}
     </div>
   );

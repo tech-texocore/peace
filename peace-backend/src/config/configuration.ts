@@ -2,9 +2,9 @@ export default () => ({
   app: {
     name: process.env.APP_NAME ?? 'peace-backend',
     env: process.env.NODE_ENV ?? 'development',
-    port: parseInt(process.env.PORT ?? '4000', 10),
+    port: parseInt(process.env.API_PORT ?? '4000', 10),
     apiPrefix: process.env.API_PREFIX ?? 'api',
-    corsOrigins: (process.env.CORS_ORIGINS ?? '*')
+    corsOrigins: (process.env.WEB_URL ?? 'http://localhost:3000')
       .split(',')
       .map((o) => o.trim())
       .filter(Boolean),
@@ -16,8 +16,13 @@ export default () => ({
 
   platform: {
     setupSecret: process.env.SETUP_SECRET ?? 'change-me-setup-secret',
-    defaultStoreSlug: process.env.DEFAULT_STORE_SLUG ?? 'peace',
-    defaultStoreName: process.env.DEFAULT_STORE_NAME ?? 'Peace',
+    defaultStoreSlug: process.env.STORE_SLUG ?? 'peace',
+    defaultStoreName: process.env.STORE_NAME ?? 'Peace',
+  },
+
+  // Encrypts integration keys stored in the database.
+  security: {
+    encryptionKey: process.env.ENCRYPTION_KEY,
   },
 
   jwt: {
@@ -42,21 +47,23 @@ export default () => ({
     maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS ?? '5', 10),
   },
 
-  // Media storage — swappable provider (s3 for prod, local for dev).
+  // Media storage. The database keeps only keys ("media:products/…"); links
+  // are built from here, so switching disk → S3 or changing domain needs no
+  // data change.
   media: {
-    provider: process.env.MEDIA_PROVIDER ?? 'local',
-    // Public base used to build asset URLs (CDN domain, or the API for local).
-    publicUrl: process.env.MEDIA_PUBLIC_URL ?? 'http://localhost:4000',
-    local: {
-      dir: process.env.MEDIA_LOCAL_DIR ?? 'uploads',
-    },
+    driver: process.env.MEDIA_DRIVER ?? 'local',
+    // Local folder — relative to the backend folder, or absolute (VPS: /var/www/peace/uploads).
+    dir: process.env.MEDIA_DIR ?? 'uploads',
+    // Base for image links. Empty = API_URL/uploads (local) or the bucket URL (s3).
+    publicUrl: process.env.MEDIA_PUBLIC_URL || undefined,
+    apiUrl: process.env.API_URL ?? 'http://localhost:4000',
     s3: {
-      bucket: process.env.AWS_S3_BUCKET,
-      region: process.env.AWS_S3_REGION,
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      // Optional CloudFront/CDN base; falls back to the S3 URL.
-      cdnUrl: process.env.AWS_S3_CDN_URL,
+      bucket: process.env.S3_BUCKET,
+      region: process.env.S3_REGION || 'auto',
+      // For S3-compatible services (Cloudflare R2, MinIO …); empty for AWS.
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      accessKeyId: process.env.S3_ACCESS_KEY_ID,
+      secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
     },
   },
 
@@ -64,44 +71,5 @@ export default () => ({
   // external service). Swappable to a self-hosted engine later via SEARCH_PROVIDER.
   search: {
     provider: process.env.SEARCH_PROVIDER ?? 'postgres',
-  },
-
-  // Where storefront "Contact us" messages are emailed.
-  contact: {
-    email: process.env.CONTACT_EMAIL ?? 'support@peace.local',
-  },
-
-  // Notification channels — each swappable via its own provider.
-  notifications: {
-    sms: { provider: process.env.SMS_PROVIDER ?? 'console' },
-    whatsapp: { provider: process.env.WHATSAPP_PROVIDER ?? 'console' },
-    email: {
-      provider: process.env.EMAIL_PROVIDER ?? 'console',
-      from: process.env.EMAIL_FROM ?? 'Peace <no-reply@peace.local>',
-    },
-    push: { provider: process.env.PUSH_PROVIDER ?? 'console' },
-  },
-
-  // Transactional integrations (client-supplied). SMS/WhatsApp/Email live under `notifications`.
-  integrations: {
-    payments: {
-      provider: process.env.PAYMENTS_PROVIDER ?? 'razorpay',
-      razorpay: {
-        keyId: process.env.RAZORPAY_KEY_ID,
-        keySecret: process.env.RAZORPAY_KEY_SECRET,
-        webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
-      },
-    },
-    courier: {
-      provider: process.env.COURIER_PROVIDER ?? 'bharatship',
-      bharatship: {
-        email: process.env.BHARATSHIP_EMAIL,
-        password: process.env.BHARATSHIP_PASSWORD,
-        apiBase: process.env.BHARATSHIP_API_BASE ?? 'https://app.bharatship.com',
-        pickupAddressId: process.env.BHARATSHIP_PICKUP_ADDRESS_ID,
-        courierCode: process.env.BHARATSHIP_COURIER_CODE,
-        defaultWeightGrams: process.env.BHARATSHIP_DEFAULT_WEIGHT_GRAMS,
-      },
-    },
   },
 });

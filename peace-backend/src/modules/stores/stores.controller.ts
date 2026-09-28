@@ -1,14 +1,18 @@
-import { BadRequestException, Body, Controller, Get, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CurrentUser, type AuthUser } from '../../common/decorators/current-user.decorator';
+import { IntegrationsService } from '../../infra/integrations/integrations.service';
 import { StoresService } from './stores.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { UpdateIntegrationsDto, UpdateSettingsDto } from './dto/store-settings.dto';
 
 @Controller('stores')
 export class StoresController {
-  constructor(private readonly stores: StoresService) {}
+  constructor(
+    private readonly stores: StoresService,
+    private readonly integrations: IntegrationsService,
+  ) {}
 
   @Roles('SUPER_ADMIN')
   @Post()
@@ -37,13 +41,19 @@ export class StoresController {
   @RequirePermissions('integrations.read')
   @Get('integrations')
   getIntegrations(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
-    return this.stores.getIntegrations(this.resolveStoreId(user, storeId));
+    return this.integrations.getMasked(this.resolveStoreId(user, storeId));
   }
 
   @RequirePermissions('integrations.update')
   @Put('integrations')
   updateIntegrations(@CurrentUser() user: AuthUser, @Body() dto: UpdateIntegrationsDto, @Query('storeId') storeId?: string) {
-    return this.stores.updateIntegrations(this.resolveStoreId(user, storeId), dto.integrations);
+    return this.integrations.update(this.resolveStoreId(user, storeId), dto.integrations);
+  }
+
+  @RequirePermissions('integrations.update')
+  @Post('integrations/test/:group')
+  testIntegration(@CurrentUser() user: AuthUser, @Param('group') group: string) {
+    return this.integrations.test(group, user.email);
   }
 
   private resolveStoreId(user: AuthUser, storeId?: string): string {

@@ -10,7 +10,11 @@ export interface SmsProvider {
 
 export interface WhatsappProvider {
   readonly name: string;
-  send(to: string, message: string, template?: { name: string; params?: string[] }): Promise<void>;
+  send(
+    to: string,
+    message: string,
+    template?: { name: string; params?: string[] },
+  ): Promise<void>;
 }
 
 export interface EmailProvider {
@@ -20,5 +24,10 @@ export interface EmailProvider {
 
 export interface PushProvider {
   readonly name: string;
-  send(deviceToken: string, title: string, body: string, data?: Record<string, string>): Promise<void>;
+  send(
+    deviceToken: string,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<void>;
 }

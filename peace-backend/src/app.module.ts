@@ -1,6 +1,13 @@
-import { Module } from '@nestjs/common';
+import { resolve } from 'path';
+import { ExecutionContext, Module } from '@nestjs/common';
+import type { Request } from 'express';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import {
+  APP_GUARD,
+  APP_FILTER,
+  APP_INTERCEPTOR,
+  Reflector,
+} from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 
@@ -9,6 +16,7 @@ import { validateEnv } from './config/env.validation';
 
 import { PrismaModule } from './infra/prisma/prisma.module';
 import { FirebaseModule } from './infra/firebase/firebase.module';
+import { IntegrationsModule } from './infra/integrations/integrations.module';
 import { MediaModule } from './infra/media/media.module';
 import { NotificationsModule } from './infra/notifications/notifications.module';
 import { ShippingModule } from './infra/shipping/shipping.module';
@@ -30,6 +38,7 @@ import { AdminUsersModule } from './modules/admin-users/admin-users.module';
 import { SiteConfigModule } from './modules/site-config/site-config.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { OtpModule } from './modules/otp/otp.module';
+import { DataResetModule } from './modules/data-reset/data-reset.module';
 import { AccountModule } from './modules/account/account.module';
 import { GeoModule } from './modules/geo/geo.module';
 import { SellersModule } from './modules/sellers/sellers.module';
@@ -53,25 +62,37 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { EngagementModule } from './modules/engagement/engagement.module';
 import { ContactModule } from './modules/contact/contact.module';
 
+const isLoopback = (ip?: string) =>
+  ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+
 @Module({
   imports: [
-    // Global, validated, typed configuration from .env
+    // Global, validated, typed configuration from the root .env.<NODE_ENV>
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      envFilePath: resolve(
+        process.cwd(),
+        `../.env.${process.env.NODE_ENV ?? 'development'}`,
+      ),
       load: [configuration],
       validate: validateEnv,
     }),
 
-    // Rate limiting, configurable via env
+    // Rate limiting per visitor IP, configurable via env. Calls from this machine
+    // (the web app rendering pages) are not limited.
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => [
-        {
-          ttl: config.get<number>('throttle.ttl')! * 1000,
-          limit: config.get<number>('throttle.limit')!,
-        },
-      ],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: config.get<number>('throttle.ttl')! * 1000,
+            limit: config.get<number>('throttle.limit')!,
+          },
+        ],
+        skipIf: (ctx: ExecutionContext) =>
+          isLoopback(ctx.switchToHttp().getRequest<Request>().ip),
+      }),
     }),
 
     // In-process scheduler (abandoned-cart scan, etc.)
@@ -80,10 +101,12 @@ import { ContactModule } from './modules/contact/contact.module';
     // Infrastructure
     PrismaModule,
     FirebaseModule,
+    IntegrationsModule,
     MediaModule,
     NotificationsModule,
     ShippingModule,
     OtpModule,
+    DataResetModule,
 
     // Platform modules
     AccessModule,

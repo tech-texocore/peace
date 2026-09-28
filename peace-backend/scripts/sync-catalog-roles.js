@@ -1,12 +1,5 @@
 // Adds newly-introduced catalog permissions to the seeded system roles.
-const fs = require('fs');
-const path = require('path');
-if (!process.env.DATABASE_URL) {
-  try {
-    const m = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').match(/^DATABASE_URL=(.+)$/m);
-    if (m) process.env.DATABASE_URL = m[1].trim().replace(/^["']|["']$/g, '');
-  } catch {}
-}
+require('./load-env');
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
 

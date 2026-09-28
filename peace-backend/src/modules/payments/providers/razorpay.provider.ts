@@ -1,22 +1,19 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { IntegrationsService } from '../../../infra/integrations/integrations.service';
 import type { PaymentProvider, ProviderOrder } from '../payment-provider.interface';
 
-// Razorpay via REST + HMAC only — no SDK dependency. Works in test mode with
-// test keys (free, no real money) and in live mode once live keys are set.
+// Razorpay via REST + HMAC only — no SDK dependency. Keys come from admin →
+// Integrations: test keys for sandbox, live keys for real payments.
 @Injectable()
 export class RazorpayProvider implements PaymentProvider {
   readonly name = 'razorpay';
-  private readonly keyId?: string;
-  private readonly keySecret?: string;
-  private readonly webhookSecret?: string;
 
-  constructor(config: ConfigService) {
-    this.keyId = config.get<string>('integrations.payments.razorpay.keyId');
-    this.keySecret = config.get<string>('integrations.payments.razorpay.keySecret');
-    this.webhookSecret = config.get<string>('integrations.payments.razorpay.webhookSecret');
-  }
+  constructor(private readonly integrations: IntegrationsService) {}
+
+  private get keyId() { return this.integrations.current.razorpay.keyId; }
+  private get keySecret() { return this.integrations.current.razorpay.keySecret; }
+  private get webhookSecret() { return this.integrations.current.razorpay.webhookSecret; }
 
   get configured() { return Boolean(this.keyId && this.keySecret); }
   get publicKey() { return this.keyId ?? null; }

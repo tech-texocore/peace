@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { mkdir, unlink, writeFile } from 'fs/promises';
-import { dirname, join } from 'path';
+import { mkdir, rm, unlink, writeFile } from 'fs/promises';
+import { dirname, join, resolve } from 'path';
 import { StorageProvider, StoredObject } from '../storage-provider.interface';
 
-// Dev provider — writes to a local folder served at /uploads (same key layout as S3).
+// Files on the server disk (MEDIA_DIR), served at /uploads — by Nginx on the VPS.
 @Injectable()
 export class LocalStorageProvider implements StorageProvider {
   readonly name = 'local';
@@ -12,15 +12,21 @@ export class LocalStorageProvider implements StorageProvider {
   constructor(private readonly config: ConfigService) {}
 
   private get dir(): string {
-    return join(process.cwd(), this.config.get<string>('media.local.dir')!);
+    return resolve(process.cwd(), this.config.get<string>('media.dir')!);
   }
 
   url(key: string): string {
-    const base = this.config.get<string>('media.publicUrl')!.replace(/\/$/, '');
-    return `${base}/uploads/${key}`;
+    const base =
+      this.config.get<string>('media.publicUrl') ??
+      `${this.config.get<string>('media.apiUrl')}/uploads`;
+    return `${base.replace(/\/$/, '')}/${key}`;
   }
 
-  async put(key: string, body: Buffer, _contentType: string): Promise<StoredObject> {
+  async put(
+    key: string,
+    body: Buffer,
+    _contentType: string,
+  ): Promise<StoredObject> {
     const filePath = join(this.dir, key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, body);
@@ -29,5 +35,9 @@ export class LocalStorageProvider implements StorageProvider {
 
   async remove(key: string): Promise<void> {
     await unlink(join(this.dir, key)).catch(() => undefined);
+  }
+
+  async removeFolder(folder: string): Promise<void> {
+    await rm(join(this.dir, folder), { recursive: true, force: true });
   }
 }

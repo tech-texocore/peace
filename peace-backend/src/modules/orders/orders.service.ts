@@ -66,7 +66,7 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
     if (order.awb) throw new BadRequestException('This order already has a shipment');
     if (!['CONFIRMED', 'PACKED'].includes(order.status)) throw new BadRequestException('Only confirmed/packed orders can be shipped');
-    if (!this.shipping.configured) throw new BadRequestException('Courier is not configured. Add BharatShip credentials to enable automatic shipping.');
+    if (!this.shipping.configured) throw new BadRequestException('Courier is not configured. Add the BharatShip login in Integrations to enable automatic shipping.');
 
     const result = await this.shipping.createShipment(this.shipmentInput(order));
     await this.prisma.order.update({

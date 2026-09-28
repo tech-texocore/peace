@@ -14,7 +14,7 @@ class EnvironmentVariables {
 
   @IsNumber()
   @IsOptional()
-  PORT?: number;
+  API_PORT?: number;
 
   @IsString()
   @IsOptional()

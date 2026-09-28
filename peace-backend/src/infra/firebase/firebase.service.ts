@@ -59,4 +59,14 @@ export class FirebaseService implements OnModuleInit {
   async setDisabled(uid: string, disabled: boolean): Promise<void> {
     await this.auth.updateUser(uid, { disabled });
   }
+
+  // Firebase deletes at most 1000 accounts per call.
+  async deleteUsers(uids: string[]): Promise<number> {
+    let deleted = 0;
+    for (let i = 0; i < uids.length; i += 1000) {
+      const res = await this.auth.deleteUsers(uids.slice(i, i + 1000));
+      deleted += res.successCount;
+    }
+    return deleted;
+  }
 }

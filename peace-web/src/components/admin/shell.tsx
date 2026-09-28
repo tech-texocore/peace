@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, SlidersHorizontal, ShieldCheck, Users, Store, Plug, ScrollText, Palette, Building2, Database, FolderTree, Layers, Package, Tag, Ticket, Star, ShoppingCart, Boxes, Contact, LogOut, Loader2, Menu, X, Mail, Megaphone } from "lucide-react";
+import { LayoutDashboard, SlidersHorizontal, ShieldCheck, Users, Store, Plug, ScrollText, Palette, Building2, Database, FolderTree, Layers, Package, Tag, Ticket, Star, ShoppingCart, Boxes, Contact, LogOut, Loader2, Menu, X, Mail, Megaphone, TriangleAlert } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin/auth-context";
 import { cn } from "@/lib/utils/cn";
 
@@ -44,6 +44,8 @@ const navGroups: { title: string | null; items: { href: string; label: string; i
     { href: "/admin/roles", label: "Roles & Permissions", icon: ShieldCheck, permission: "roles.read" },
     { href: "/admin/admins", label: "Admins", icon: Users, permission: "admins.read" },
     { href: "/admin/audit", label: "Audit Log", icon: ScrollText, permission: "audit.read" },
+    // Not in the permission catalog, so no role can grant it — Super Admin only.
+    { href: "/admin/danger-zone", label: "Danger Zone", icon: TriangleAlert, permission: "platform.reset" },
   ] },
 ];
 

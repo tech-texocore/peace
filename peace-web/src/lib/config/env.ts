@@ -13,3 +13,7 @@ export const env = {
 };
 
 export const isFirebaseConfigured = Boolean(env.firebase.apiKey && env.firebase.projectId);
+
+// Pages rendered on the server call the API on the same machine (no Nginx/TLS hop,
+// not counted by the per-visitor rate limit). Browsers use the public URL.
+export const apiBase = () => (typeof window === "undefined" && process.env.API_INTERNAL_URL) || env.apiBaseUrl;

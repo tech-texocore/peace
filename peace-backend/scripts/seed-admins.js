@@ -1,14 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-
-try {
-  const env = fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8');
-  for (const key of ['DATABASE_URL', 'FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY']) {
-    if (process.env[key]) continue;
-    const m = env.match(new RegExp('^' + key + '=(.+)$', 'm'));
-    if (m) process.env[key] = m[1].trim().replace(/^["']|["']$/g, '');
-  }
-} catch {}
+require('./load-env');
 
 const { cert, getApps, initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');

@@ -1,6 +1,6 @@
-import { env } from "@/lib/config/env";
+import { apiBase, env } from "@/lib/config/env";
 
-const base = () => `${env.apiBaseUrl}/storefront/${env.storeSlug}`;
+const base = () => `${apiBase()}/storefront/${env.storeSlug}`;
 
 export interface ProductCard {
   id: string; slug: string; title: string; brand: string | null;

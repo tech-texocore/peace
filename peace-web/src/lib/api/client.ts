@@ -1,4 +1,4 @@
-import { env } from "@/lib/config/env";
+import { apiBase } from "@/lib/config/env";
 import { firebaseAuth } from "@/lib/firebase/client";
 
 type Options = RequestInit & { auth?: boolean };
@@ -16,7 +16,7 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
     finalHeaders.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${env.apiBaseUrl}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     ...rest,
     headers: finalHeaders,
   });
@@ -48,7 +48,7 @@ export const api = {
     if (options?.auth && firebaseAuth?.currentUser) {
       headers.Authorization = `Bearer ${await firebaseAuth.currentUser.getIdToken()}`;
     }
-    const res = await fetch(`${env.apiBaseUrl}${path}`, { method: "POST", body: form, headers });
+    const res = await fetch(`${apiBase()}${path}`, { method: "POST", body: form, headers });
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new Error(body?.message ?? `Upload failed: ${res.status}`);
     return (body?.data ?? body) as T;

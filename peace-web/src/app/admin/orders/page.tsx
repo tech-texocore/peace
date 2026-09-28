@@ -14,6 +14,7 @@ import { SubNav, ORDER_TABS } from "@/components/admin/sub-nav";
 import { EmptyState } from "@/components/admin/empty-state";
 import { useSort, SortTh } from "@/components/admin/sortable";
 import { inr, ORDER_STATUS_LABEL, type Order, type OrderStatus, type TrackingResult } from "@/lib/orders";
+import { CustomizationSummary } from "@/components/ui/customization-summary";
 
 type Customer = { name: string | null; email: string; phone: string | null };
 type AdminOrder = Order & { customer: string | Customer };
@@ -265,10 +266,15 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
                         <span className="font-medium">{inr(unit * it.quantity)}</span>
                       </>
                     );
-                    return it.productId ? (
-                      <Link key={it.id ?? i} href={`/admin/products/${it.productId}`} className="flex gap-3 p-3 text-sm transition-colors hover:bg-accent-soft/40">{inner}</Link>
-                    ) : (
-                      <div key={it.id ?? i} className="flex gap-3 p-3 text-sm">{inner}</div>
+                    return (
+                      <div key={it.id ?? i}>
+                        {it.productId ? (
+                          <Link href={`/admin/products/${it.productId}`} className="flex gap-3 p-3 text-sm transition-colors hover:bg-accent-soft/40">{inner}</Link>
+                        ) : (
+                          <div className="flex gap-3 p-3 text-sm">{inner}</div>
+                        )}
+                        <CustomizationSummary values={it.customization} className="-mt-2 space-y-1 px-3 pb-3 pl-[4.25rem] text-xs text-muted" />
+                      </div>
                     );
                   })}
                 </div>

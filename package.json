@@ -1,0 +1,14 @@
+{
+  "name": "peace",
+  "private": true,
+  "scripts": {
+    "setup": "npm install && npm --prefix peace-backend install && npm --prefix peace-web install",
+    "dev": "concurrently -n api,web,courier -c blue,magenta,gray \"npm --prefix peace-backend run start:dev\" \"npm --prefix peace-web run dev\" \"node peace-backend/scripts/mock-bharatship.js\"",
+    "build": "npm --prefix peace-backend run build && npm --prefix peace-web run build",
+    "db:migrate": "cd peace-backend && npx prisma migrate deploy && npx prisma generate",
+    "db:seed": "npm --prefix peace-backend run seed && npm --prefix peace-backend run seed:admins"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

@@ -13,8 +13,8 @@ export interface ProviderRefund {
 }
 
 /**
- * Online payment gateway. Implemented with plain fetch + HMAC (no SDK), so the
- * only thing needed to go live is the client's Razorpay keys in .env.
+ * Online payment gateway. Implemented with plain fetch + HMAC (no SDK); keys are
+ * set in admin → Integrations.
  */
 export interface PaymentProvider {
   readonly name: string;

@@ -21,14 +21,28 @@ export class MediaController {
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'STAFF')
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: UPLOAD_LIMIT } }))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: UPLOAD_LIMIT } }),
+  )
   async upload(
     @UploadedFile() file: UploadFile,
     @Query('folder') folder: MediaFolder,
     @Query('entityId') entityId?: string,
   ) {
-    if (!MEDIA_FOLDERS.includes(folder)) throw new BadRequestException('Invalid folder');
+    if (!MEDIA_FOLDERS.includes(folder))
+      throw new BadRequestException('Invalid folder');
     return this.media.upload(folder, file, entityId);
+  }
+
+  // Any signed-in shopper: a photo for a product's personalisation field.
+  @Post('customer-upload')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 8 * 1024 * 1024 } }),
+  )
+  async customerUpload(@UploadedFile() file: UploadFile) {
+    if (!file?.mimetype?.startsWith('image/'))
+      throw new BadRequestException('Please choose an image');
+    return this.media.upload('customizations', file);
   }
 
   @Roles('SUPER_ADMIN', 'ADMIN', 'STAFF')
