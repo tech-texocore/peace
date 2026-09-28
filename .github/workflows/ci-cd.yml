@@ -56,6 +56,7 @@ jobs:
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          echo "Deploy key: $(ssh-keygen -lf ~/.ssh/deploy | awk '{print $2}')"
           printf '%s %s\n' "$HOST" "$HOST_KEY" > ~/.ssh/known_hosts
           # The server key only allows running deploy/update.sh
           ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=yes peace@"$HOST"
