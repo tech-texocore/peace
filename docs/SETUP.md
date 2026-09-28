@@ -242,7 +242,7 @@ The key can only run the deploy script — no shell, no other commands. Then in 
 | Secret | Value |
 |---|---|
 | `VPS_HOST` | server IP |
-| `VPS_SSH_KEY` | contents of `~/.ssh/ci_deploy` (then delete that file from the server) |
+| `VPS_SSH_KEY` | output of `base64 -w0 ~/.ssh/ci_deploy` (one line; then delete that file from the server) |
 | `VPS_HOST_KEY` | `ssh-ed25519 …` part of `/etc/ssh/ssh_host_ed25519_key.pub` |
 
 ### Updates

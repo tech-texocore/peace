@@ -55,7 +55,8 @@ jobs:
           SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          # VPS_SSH_KEY holds the private key as base64; spaces/line breaks from copying are ignored
+          printf '%s' "$SSH_KEY" | tr -d ' \t\r\n' | base64 -d > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
           echo "Deploy key: $(ssh-keygen -lf ~/.ssh/deploy | awk '{print $2}')"
           printf '%s %s\n' "$HOST" "$HOST_KEY" > ~/.ssh/known_hosts
           # The server key only allows running deploy/update.sh
