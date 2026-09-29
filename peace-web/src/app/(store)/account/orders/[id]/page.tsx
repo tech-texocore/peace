@@ -4,20 +4,20 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, FileText, MapPin, Package, XCircle, RotateCcw, X, Truck } from "lucide-react";
-import { getMyOrder, cancelOrder, requestReturn, getMyTracking, inr, ORDER_STATUS_LABEL, type Order, type TrackingResult } from "@/lib/orders";
+import { getMyOrder, cancelOrder, requestReturn, getMyTracking, inr, ORDER_STATUS_LABEL, type Order, type ReturnStatus, type TrackingResult } from "@/lib/orders";
 import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { CustomizationSummary } from "@/components/ui/customization-summary";
 import { trackMeta } from "@/lib/meta-pixel";
 
 const CANCELLABLE = ["PENDING", "CONFIRMED", "PACKED"];
-const RETURN_STEPS = [
-  { key: "REQUESTED", label: "Return requested" },
-  { key: "APPROVED", label: "Approved — pickup scheduled" },
-  { key: "PICKED_UP", label: "Item collected" },
-  { key: "REFUNDED", label: "Refund initiated" },
+const returnSteps = (rr: NonNullable<Order["returnRequest"]>) => [
+  rr.type === "EXCHANGE" ? "Exchange requested" : "Return requested",
+  rr.reverseAwb ? `Approved — courier pickup booked (AWB ${rr.reverseAwb})` : "Approved — we'll contact you to collect the item",
+  "Item collected",
+  rr.type === "EXCHANGE" ? "Replacement sent" : "Refunded",
 ];
-const returnStepIndex = (s: string): number => ({ REQUESTED: 0, APPROVED: 1, PICKED_UP: 2, REFUNDED: 3 } as Record<string, number>)[s] ?? 0;
+const RETURN_STEP_INDEX: Record<ReturnStatus, number> = { REQUESTED: 0, APPROVED: 1, PICKED_UP: 2, REFUNDED: 3, EXCHANGED: 3, REJECTED: 0 };
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -139,7 +139,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <h2 className="flex items-center gap-2 font-medium"><Truck className="h-5 w-5 text-accent" /> Shipment</h2>
                   <p className="mt-1 text-xs text-muted">{order.courierName ? `${order.courierName} · ` : ""}AWB <span className="font-mono text-ink">{order.awb}</span></p>
                 </div>
-                <button onClick={loadTracking} disabled={trackingBusy} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft disabled:opacity-50">{trackingBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Track live</button>
+                {order.shipmentProvider === "bharatship" && <button onClick={loadTracking} disabled={trackingBusy} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft disabled:opacity-50">{trackingBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Track live</button>}
               </div>
               {tracking && (
                 <div className="mt-4 border-t border-line pt-4">
@@ -164,20 +164,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 <p className="text-sm text-danger">Your request was declined.{order.returnRequest.resolution ? ` ${order.returnRequest.resolution}` : ""}</p>
               ) : (
                 <ol className="space-y-4">
-                  {RETURN_STEPS.map((step, i) => {
-                    const reached = returnStepIndex(order.returnRequest!.status) >= i;
+                  {returnSteps(order.returnRequest).map((label, i, steps) => {
+                    const reached = RETURN_STEP_INDEX[order.returnRequest!.status] >= i;
                     return (
-                      <li key={step.key} className="flex gap-3">
+                      <li key={label} className="flex gap-3">
                         <div className="flex flex-col items-center">
                           <span className={`h-3 w-3 rounded-full ${reached ? "bg-accent" : "bg-line"}`} />
-                          {i < RETURN_STEPS.length - 1 && <span className={`w-px flex-1 ${reached ? "bg-accent/40" : "bg-line"}`} />}
+                          {i < steps.length - 1 && <span className={`w-px flex-1 ${reached ? "bg-accent/40" : "bg-line"}`} />}
                         </div>
-                        <p className={`-mt-1 pb-1 text-sm ${reached ? "font-medium" : "text-muted"}`}>{step.label}</p>
+                        <p className={`-mt-1 pb-1 text-sm ${reached ? "font-medium" : "text-muted"}`}>{label}</p>
                       </li>
                     );
                   })}
                 </ol>
               )}
+              {order.returnRequest.status === "EXCHANGED" && order.returnRequest.resolution && <p className="mt-3 text-xs text-muted">Replacement: <span className="text-ink">{order.returnRequest.resolution}</span></p>}
               {order.returnRequest.refundAmount != null && <p className="mt-3 text-xs text-muted">Refund amount: <span className="font-medium text-ink">{inr(order.returnRequest.refundAmount)}</span>{order.returnRequest.refundId ? ` · ref ${order.returnRequest.refundId}` : ""}</p>}
             </section>
           )}

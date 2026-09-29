@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -26,7 +26,7 @@ export class CreateOrderDto {
 
   @IsString() addressId!: string;
 
-  @IsOptional() @IsString() deliveryMethod?: string;
+  @IsString() @IsNotEmpty() deliveryMethod!: string;
 
   @IsIn(['COD', 'RAZORPAY']) paymentMethod!: PaymentMethod;
 
@@ -49,15 +49,21 @@ export class RequestReturnDto {
 }
 
 export class ResolveReturnDto {
-  @IsIn(['APPROVE', 'REJECT', 'MARK_PICKED_UP', 'REFUND']) action!: 'APPROVE' | 'REJECT' | 'MARK_PICKED_UP' | 'REFUND';
-  @IsOptional() @IsString() resolution?: string;
+  @IsIn(['APPROVE', 'REJECT', 'MARK_PICKED_UP', 'REFUND', 'COMPLETE_EXCHANGE'])
+  action!: 'APPROVE' | 'REJECT' | 'MARK_PICKED_UP' | 'REFUND' | 'COMPLETE_EXCHANGE';
+  @IsOptional() @IsString() @MaxLength(500) resolution?: string;
+  @IsOptional() @IsIn(['COURIER', 'SELF']) pickup?: 'COURIER' | 'SELF';
 }
 
 export class UpdateOrderStatusDto {
   @IsIn(['PENDING', 'CONFIRMED', 'PACKED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'])
   status!: OrderStatus;
 
-  @IsOptional() @IsString() note?: string;
+  @IsOptional() @IsString() @MaxLength(500) note?: string;
+
+  @IsOptional() @IsString() @MaxLength(60) awb?: string;
+
+  @IsOptional() @IsString() @MaxLength(60) courierName?: string;
 }
 
 export class ListOrdersDto extends PaginationDto {

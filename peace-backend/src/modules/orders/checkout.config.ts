@@ -46,7 +46,7 @@ const amount = (v: unknown, fallback: number) =>
 
 function resolveMethods(raw: unknown): DeliveryMethod[] {
   if (!Array.isArray(raw)) return DEFAULT_METHODS;
-  const methods = raw
+  return raw
     .filter((m): m is Partial<DeliveryMethod> => !!m && typeof m === 'object')
     .filter(
       (m) =>
@@ -63,7 +63,6 @@ function resolveMethods(raw: unknown): DeliveryMethod[] {
       enabled: m.enabled !== false,
     }))
     .filter((m) => m.enabled);
-  return methods.length ? methods : DEFAULT_METHODS;
 }
 
 export function resolveShipping(settings: unknown): ShippingConfig {

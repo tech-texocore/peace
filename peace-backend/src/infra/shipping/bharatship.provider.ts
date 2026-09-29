@@ -54,9 +54,25 @@ export class BharatShipProvider {
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok || json.status === false || json.status === 'error') {
-      throw new BadRequestException((json.message as string) ?? `Courier request failed (${path}).`);
+      this.logger.warn(`BharatShip ${path} failed (${res.status}): ${JSON.stringify(json).slice(0, 2000)}`);
+      throw new BadRequestException(this.errorMessage(json, path));
     }
     return json as T;
+  }
+
+  // BharatShip validation errors come as { message, errors: { field: [reason] } } — surface the reasons.
+  private errorMessage(json: Record<string, unknown>, path: string) {
+    const base = typeof json.message === 'string' && json.message ? json.message : `Courier request failed (${path})`;
+    const errors = json.errors ?? json.error ?? json.data;
+    const details =
+      errors && typeof errors === 'object'
+        ? Object.entries(errors as Record<string, unknown>)
+            .map(([field, reason]) => `${field}: ${Array.isArray(reason) ? reason.join(', ') : String(reason)}`)
+            .slice(0, 5)
+        : typeof errors === 'string'
+          ? [errors]
+          : [];
+    return details.length ? `${base} — ${details.join('; ')}` : base;
   }
 
   private orderPayload(input: ShipmentInput) {
@@ -119,7 +135,7 @@ export class BharatShipProvider {
       location: (s.location as string) ?? (s.city as string) ?? null,
       time: (s.date as string) ?? (s.timestamp as string) ?? (s.time as string) ?? null,
     }));
-    return { awb, status: String(r.current_status ?? r.status ?? events[0]?.status ?? 'In transit'), courierName: (r.courier_name as string) ?? null, events };
+    return { awb, status: String(r.current_status ?? events[0]?.status ?? 'Awaiting courier update'), courierName: (r.courier_name as string) ?? null, events };
   }
 
   async cancel(awb: string): Promise<void> {

@@ -683,10 +683,12 @@ model Order {
   // Provider order id (e.g. Razorpay order_...) for online payments.
   paymentOrderId String?
 
-  cancelReason String?
-  cancelledAt  DateTime?
-  awb          String?
-  courierName  String?
+  cancelReason     String?
+  cancelledAt      DateTime?
+  awb              String?
+  courierName      String?
+  // 'bharatship' when booked through the courier integration, 'manual' when the admin shipped it themselves.
+  shipmentProvider String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -709,6 +711,7 @@ enum ReturnStatus {
   APPROVED
   PICKED_UP
   REFUNDED
+  EXCHANGED
   REJECTED
 }
 

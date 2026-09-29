@@ -7,6 +7,7 @@ import { Loader2, Search, X, ChevronRight, ChevronDown, ShoppingCart, MapPin, Ph
 import { api } from "@/lib/api/client";
 import { useAdminAuth } from "@/lib/admin/auth-context";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { notifyOrdersChanged } from "@/lib/admin/events";
 import { cn } from "@/lib/utils/cn";
 import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { PageHeader } from "@/components/admin/page-header";
@@ -17,15 +18,19 @@ import { inr, ORDER_STATUS_LABEL, type Order, type OrderStatus, type TrackingRes
 import { CustomizationSummary } from "@/components/ui/customization-summary";
 
 type Customer = { name: string | null; email: string; phone: string | null };
-type AdminOrder = Order & { customer: string | Customer };
+type AdminOrder = Order & {
+  customer: string | Customer;
+  allowedStatuses?: OrderStatus[];
+  courierConnected?: boolean;
+  paymentWindowMinutes?: number;
+};
+type ManualShipment = { courierName: string; awb: string };
 
 const PAY_LABEL: Record<string, string> = { UNPAID: "Not paid", PENDING: "Payment pending", PAID: "Paid", REFUNDED: "Refunded", FAILED: "Payment failed" };
 const PAY_TONE: Record<string, string> = { PAID: "text-emerald-600 dark:text-emerald-400", REFUNDED: "text-muted", FAILED: "text-danger", PENDING: "text-amber-600 dark:text-amber-400", UNPAID: "text-muted" };
 interface ListResp { items: AdminOrder[]; total: number; statusCounts: Record<string, number> }
 
 const TABS: (OrderStatus | "")[] = ["", "PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"];
-const NEXT: Partial<Record<OrderStatus, OrderStatus>> = { PENDING: "CONFIRMED", CONFIRMED: "PACKED", PACKED: "SHIPPED", SHIPPED: "DELIVERED" };
-const ALL_STATUSES: OrderStatus[] = ["PENDING", "CONFIRMED", "PACKED", "SHIPPED", "DELIVERED", "CANCELLED", "RETURNED"];
 const PAY_METHODS: [string, string][] = [["", "All payments"], ["COD", "Cash on delivery"], ["RAZORPAY", "Prepaid / online"]];
 const PAY_STATUSES: [string, string][] = [["", "Any payment status"], ["PAID", "Paid"], ["UNPAID", "Not paid"], ["PENDING", "Payment pending"], ["REFUNDED", "Refunded"], ["FAILED", "Failed"]];
 
@@ -91,29 +96,35 @@ function OrdersInner() {
 
   const openDetail = useCallback(async (id: string) => {
     const o = await api.get<AdminOrder>(`/orders/admin/${id}?${q}`, { auth: true });
-    setDetail(o); setNote("");
+    setDetail(o); setNote(""); setActionErr("");
   }, [q]);
 
   useEffect(() => { if (deepLinkId && storeId) openDetail(deepLinkId); }, [deepLinkId, storeId, openDetail]);
   useEffect(() => { if (statusParam && TABS.includes(statusParam as OrderStatus)) setTab(statusParam as OrderStatus); }, [statusParam]);
 
-  async function setStatus(status: OrderStatus) {
+  async function setStatus(status: OrderStatus, shipment?: ManualShipment) {
     if (!detail) return;
-    if (status === "CANCELLED" || status === "RETURNED") {
-      const ok = await confirm({ title: `Mark as ${ORDER_STATUS_LABEL[status]}?`, message: "Stock will be restored to inventory.", confirmLabel: "Confirm", danger: true });
+    if (status === "CANCELLED") {
+      const ok = await confirm({ title: `Cancel ${detail.orderNumber}?`, message: cancelMessage(detail), confirmLabel: "Cancel order", danger: true });
       if (!ok) return;
     }
-    setBusy(true);
+    if (status === "DELIVERED" && detail.paymentMethod === "COD") {
+      const ok = await confirm({ title: "Mark as delivered?", message: `This also records the Cash on Delivery payment of ${inr(detail.total)} as received.`, confirmLabel: "Mark delivered" });
+      if (!ok) return;
+    }
+    setBusy(true); setActionErr("");
     try {
-      await api.patch(`/orders/admin/${detail.id}/status?${q}`, { status, note: note || undefined }, { auth: true });
-      await openDetail(detail.id); await load();
+      await api.patch(`/orders/admin/${detail.id}/status?${q}`, { status, note: note.trim() || undefined, ...shipment }, { auth: true });
+      await openDetail(detail.id); await load(); notifyOrdersChanged();
+    } catch (e) {
+      setActionErr(e instanceof Error ? e.message : "Could not update the order");
     } finally { setBusy(false); }
   }
 
   async function ship() {
     if (!detail) return;
     setBusy(true); setActionErr("");
-    try { await api.post(`/orders/admin/${detail.id}/ship?${q}`, {}, { auth: true }); await openDetail(detail.id); await load(); }
+    try { await api.post(`/orders/admin/${detail.id}/ship?${q}`, {}, { auth: true }); await openDetail(detail.id); await load(); notifyOrdersChanged(); }
     catch (e) { setActionErr(e instanceof Error ? e.message : "Could not create shipment"); }
     finally { setBusy(false); }
   }
@@ -198,6 +209,14 @@ function OrdersInner() {
   );
 }
 
+function cancelMessage(o: AdminOrder) {
+  const steps = ["Stock goes back to inventory."];
+  if (o.paymentMethod === "RAZORPAY" && o.paymentStatus === "PAID") steps.unshift(`${inr(o.total)} will be refunded to the customer through Razorpay.`);
+  if (o.shipmentProvider === "bharatship" && o.awb) steps.unshift(`The BharatShip shipment ${o.awb} will be cancelled.`);
+  if (o.shipmentProvider === "manual" && o.awb) steps.unshift(`Also stop the ${o.courierName ?? "courier"} shipment ${o.awb} yourself.`);
+  return `${steps.join(" ")} The customer is notified.`;
+}
+
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return <div className={cn("flex justify-between", strong ? "font-semibold" : "text-muted")}><span>{label}</span><span className={strong ? "" : "text-ink"}>{value}</span></div>;
 }
@@ -210,9 +229,7 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
   const [trk, setTrk] = useState<TrackingResult | null>(null);
   const [trkBusy, setTrkBusy] = useState(false);
   const doTrack = async () => { setTrkBusy(true); try { setTrk(await track(order.id)); } catch (e) { setTrk({ awb: order.awb ?? "", status: e instanceof Error ? e.message : "Tracking unavailable", events: [] }); } finally { setTrkBusy(false); } };
-  const canShip = !order.awb && (order.status === "CONFIRMED" || order.status === "PACKED");
   const a = order.shippingAddress;
-  const editable = !["CANCELLED", "RETURNED", "DELIVERED"].includes(order.status);
   const events = order.events ?? [];
 
   return (
@@ -320,32 +337,91 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
           <div className="border-t border-line px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm"><Truck className="mr-1.5 inline h-4 w-4 text-accent" />{order.courierName ? `${order.courierName} · ` : ""}AWB <span className="font-mono">{order.awb}</span></p>
-              <button onClick={doTrack} disabled={trkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-medium hover:bg-accent-soft disabled:opacity-50">{trkBusy ? "Tracking…" : "Track"}</button>
+              {order.shipmentProvider === "bharatship"
+                ? <button onClick={doTrack} disabled={trkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-medium hover:bg-accent-soft disabled:opacity-50">{trkBusy ? "Tracking…" : "Track"}</button>
+                : <span className="text-xs text-muted">Shipped manually</span>}
             </div>
             {trk && <p className="mt-2 text-xs text-muted">Status: <span className="text-ink">{trk.status}</span>{trk.events[0]?.location ? ` · ${trk.events[0].location}` : ""}</p>}
           </div>
         )}
 
-        {canUpdate && editable && (
-          <div className="border-t border-line px-5 py-4">
-            <p className="mb-2 text-sm font-medium">Update status</p>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the timeline (optional)" className="mb-2 h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent" />
-            <div className="flex flex-wrap gap-2">
-              {canShip && <button onClick={ship} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50"><Truck className="h-3.5 w-3.5" /> Ship with BharatShip</button>}
-              {NEXT[order.status] && NEXT[order.status] !== "SHIPPED" && <button onClick={() => setStatus(NEXT[order.status]!)} disabled={busy} className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-50">Mark as {ORDER_STATUS_LABEL[NEXT[order.status]!]}</button>}
-              <button onClick={() => setStatus("CANCELLED")} disabled={busy} className="rounded-full border border-line px-4 py-2 text-xs font-medium text-danger hover:bg-danger/10 disabled:opacity-50">Cancel order</button>
-              <div className="relative">
-                <select value="" onChange={(e) => e.target.value && setStatus(e.target.value as OrderStatus)} disabled={busy} className="h-full appearance-none rounded-full border border-line bg-canvas pl-3 pr-8 py-2 text-xs outline-none">
-                  <option value="">Set to…</option>
-                  {ALL_STATUSES.filter((s) => s !== order.status).map((s) => <option key={s} value={s}>{ORDER_STATUS_LABEL[s]}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-              </div>
-            </div>
-            {actionErr && <p className="mt-2 text-xs text-danger">{actionErr}</p>}
-          </div>
+        {canUpdate && (
+          <OrderActions order={order} busy={busy} note={note} setNote={setNote} setStatus={setStatus} ship={ship} actionErr={actionErr} />
         )}
       </div>
     </div>
   );
 }
+
+
+function OrderActions({ order, busy, note, setNote, setStatus, ship, actionErr }: {
+  order: AdminOrder; busy: boolean; note: string; setNote: (v: string) => void;
+  setStatus: (s: OrderStatus, shipment?: ManualShipment) => void; ship: () => void; actionErr: string;
+}) {
+  const allowed = order.allowedStatuses ?? [];
+  const canShip = allowed.includes("SHIPPED");
+  const [manual, setManual] = useState(!order.courierConnected);
+  const [shipment, setShipment] = useState<ManualShipment>({ courierName: "", awb: "" });
+  const manualReady = shipment.courierName.trim() && shipment.awb.trim();
+
+  if (!allowed.length) {
+    return (
+      <div className="border-t border-line px-5 py-4 text-sm text-muted">
+        {order.status === "DELIVERED"
+          ? <>Delivered — returns and exchanges are handled in <Link href="/admin/returns" className="text-accent hover:underline">Returns</Link>.</>
+          : `This order is ${ORDER_STATUS_LABEL[order.status].toLowerCase()} — no further changes.`}
+      </div>
+    );
+  }
+
+  const btn = "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold disabled:opacity-50";
+  const primary = cn(btn, "bg-accent text-accent-foreground hover:opacity-90");
+  const outline = cn(btn, "border border-line font-medium hover:bg-accent-soft");
+
+  return (
+    <div className="space-y-3 border-t border-line px-5 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium">Next step</p>
+        <p className="text-xs text-muted">{STEP_HINT[order.status]?.(order)}</p>
+      </div>
+
+      {canShip && (
+        <div className="rounded-xl border border-line bg-card p-3">
+          {!manual ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={ship} disabled={busy} className={primary}><Truck className="h-3.5 w-3.5" /> Ship with BharatShip</button>
+              <button type="button" onClick={() => setManual(true)} className="text-xs text-muted hover:text-accent">Shipped another way?</button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted">{order.courierConnected ? "Shipping without BharatShip — enter the courier details the customer will see." : "BharatShip is not connected — enter the courier details the customer will see."}</p>
+              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                <input value={shipment.courierName} onChange={(e) => setShipment({ ...shipment, courierName: e.target.value })} placeholder="Courier (e.g. DTDC, India Post)" maxLength={60} className="h-9 rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent" />
+                <input value={shipment.awb} onChange={(e) => setShipment({ ...shipment, awb: e.target.value })} placeholder="Tracking number" maxLength={60} className="h-9 rounded-lg border border-line bg-canvas px-3 font-mono text-sm outline-none focus:border-accent" />
+                <button onClick={() => setStatus("SHIPPED", { courierName: shipment.courierName.trim(), awb: shipment.awb.trim() })} disabled={busy || !manualReady} className={primary}>Mark as Shipped</button>
+              </div>
+              {order.courierConnected && <button type="button" onClick={() => setManual(false)} className="text-xs text-muted hover:text-accent">← Use BharatShip instead</button>}
+            </div>
+          )}
+        </div>
+      )}
+
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the timeline (optional)" maxLength={500} className="h-9 w-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent" />
+
+      <div className="flex flex-wrap gap-2">
+        {allowed.includes("PACKED") && <button onClick={() => setStatus("PACKED")} disabled={busy} className={primary}><Package className="h-3.5 w-3.5" /> Mark as Packed</button>}
+        {allowed.includes("DELIVERED") && <button onClick={() => setStatus("DELIVERED")} disabled={busy} className={primary}>Mark as Delivered</button>}
+        {allowed.includes("CANCELLED") && <button onClick={() => setStatus("CANCELLED")} disabled={busy} className={cn(outline, "text-danger hover:bg-danger/10")}>Cancel order</button>}
+        {busy && <Loader2 className="h-4 w-4 animate-spin self-center text-muted" />}
+      </div>
+      {actionErr && <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{actionErr}</p>}
+    </div>
+  );
+}
+
+const STEP_HINT: Partial<Record<OrderStatus, (o: AdminOrder) => string>> = {
+  PENDING: (o) => `Waiting for online payment — auto-cancels after ${o.paymentWindowMinutes ?? 30} min if unpaid`,
+  CONFIRMED: () => "Pack the order, then ship it",
+  PACKED: () => "Ready to ship",
+  SHIPPED: (o) => (o.paymentMethod === "COD" ? "Mark delivered once the courier delivers — records the COD payment" : "Mark delivered once the courier delivers"),
+};

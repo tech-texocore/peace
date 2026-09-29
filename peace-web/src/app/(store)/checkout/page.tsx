@@ -42,7 +42,7 @@ export default function CheckoutPage() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [addressId, setAddressId] = useState<string>("");
-  const [deliveryMethod, setDeliveryMethod] = useState<string>("standard");
+  const [deliveryMethod, setDeliveryMethod] = useState<string>("");
   const [payment, setPayment] = useState<PaymentMethod>("COD");
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -58,7 +58,7 @@ export default function CheckoutPage() {
       try {
         const cfg = await getCheckoutConfig();
         setConfig(cfg);
-        setDeliveryMethod(cfg.delivery.methods[0]?.key ?? "standard");
+        setDeliveryMethod(cfg.delivery.methods[0]?.key ?? "");
         if (!cfg.payment.razorpay.enabled) setPayment("COD");
         const addr = await api.get<Address[]>("/account/addresses", { auth: true }).catch(() => [] as Address[]);
         setAddresses(addr);
@@ -108,7 +108,7 @@ export default function CheckoutPage() {
     );
   }
 
-  const method = config?.delivery.methods.find((m) => m.key === deliveryMethod) ?? config?.delivery.methods[0];
+  const method = config?.delivery.methods.find((m) => m.key === deliveryMethod);
   const freeShip = quote != null && config != null && qualifiesForFreeDelivery(config.delivery, quote.total, quote.freeShipping);
   const freeFrom = config && !config.delivery.freeForAll && !freeShip && config.delivery.freeShippingThreshold > 0 ? config.delivery.freeShippingThreshold - (quote?.total ?? 0) : 0;
   const shipFee = freeShip ? 0 : method?.fee ?? 0;
@@ -117,6 +117,7 @@ export default function CheckoutPage() {
 
   async function placeOrder() {
     if (!addressId) { setError("Please select a delivery address"); return; }
+    if (!method) { setError("Please choose a delivery option"); return; }
     setPlacing(true); setError("");
     try {
       const res = await createOrder({
@@ -187,6 +188,9 @@ export default function CheckoutPage() {
           {/* Delivery method */}
           <section className="rounded-2xl border border-line p-5">
             <StepHead n={2} icon={Truck} title="Delivery option" note="Choose how soon you’d like to receive it." />
+            {config && !config.delivery.methods.length && (
+              <p className="rounded-xl border border-dashed border-line p-3 text-sm text-danger">Delivery isn’t available right now. Please contact us to place your order.</p>
+            )}
             <div className="grid gap-2 sm:grid-cols-2">
               {config?.delivery.methods.map((m) => (
                 <button key={m.key} onClick={() => setDeliveryMethod(m.key)} className={cn("rounded-xl border p-3 text-left text-sm", deliveryMethod === m.key ? "border-accent bg-accent-soft/40" : "border-line hover:bg-accent-soft/30")}>
@@ -245,7 +249,7 @@ export default function CheckoutPage() {
           </div>
 
           {error && <p className="mt-3 text-sm text-danger">{error}</p>}
-          <button onClick={placeOrder} disabled={placing || !addressId} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-sm font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-50">
+          <button onClick={placeOrder} disabled={placing || !addressId || !method} className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-sm font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-50">
             {placing ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Place order · {inr(grandTotal)}</>}
           </button>
           <p className="mt-2 flex items-center justify-center gap-1 text-xs text-muted"><ShieldCheck className="h-3.5 w-3.5" /> Secure checkout</p>

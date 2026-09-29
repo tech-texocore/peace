@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, SlidersHorizontal, ShieldCheck, Users, Store, Plug, ScrollText, Palette, Building2, Database, FolderTree, Layers, Package, Tag, Ticket, Star, ShoppingCart, Boxes, Contact, LogOut, Loader2, Menu, X, Mail, Megaphone, TriangleAlert, Target } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin/auth-context";
+import { ORDERS_CHANGED_EVENT } from "@/lib/admin/events";
+import { api } from "@/lib/api/client";
 import { apiBase, env } from "@/lib/config/env";
 import type { SiteConfig } from "@/lib/site-config";
 import { BrandLogo } from "@/components/layout/brand-logo";
@@ -57,7 +59,8 @@ const navGroups: { title: string | null; items: { href: string; label: string; i
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { loading, profile, logout, hasPermission } = useAdminAuth();
+  const { loading, profile, logout, hasPermission, storeId } = useAdminAuth();
+  const attention = useOrderAttention(Boolean(profile) && hasPermission("orders.read"), storeId, pathname);
   const [brand, setBrand] = useState<SiteConfig["brand"] | null>(null);
 
   useEffect(() => {
@@ -112,6 +115,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="truncate">{item.label}</span>
+                {item.href === "/admin/orders" && attention > 0 && (
+                  <span
+                    title={`${attention} to action — new orders and return requests`}
+                    className={cn(
+                      "ml-auto min-w-5 rounded-full px-1.5 text-center text-[11px] font-semibold leading-5",
+                      isActive(item.href) ? "bg-accent-foreground text-accent" : "bg-accent text-accent-foreground",
+                    )}
+                  >
+                    {attention > 99 ? "99+" : attention}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -177,4 +191,23 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
+}
+
+// Orders waiting for the admin (new + return requests); refreshed on navigation, every minute and after order actions.
+function useOrderAttention(enabled: boolean, storeId: string | null, pathname: string) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const q = storeId ? `?storeId=${storeId}` : "";
+    const refresh = () =>
+      api.get<{ newOrders: number; returns: number }>(`/orders/admin/attention${q}`, { auth: true })
+        .then((r) => alive && setCount(r.newOrders + r.returns))
+        .catch(() => undefined);
+    refresh();
+    const timer = setInterval(refresh, 60_000);
+    window.addEventListener(ORDERS_CHANGED_EVENT, refresh);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener(ORDERS_CHANGED_EVENT, refresh); };
+  }, [enabled, storeId, pathname]);
+  return enabled ? count : 0;
 }

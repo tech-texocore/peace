@@ -91,6 +91,12 @@ export class OrdersController {
   }
 
   @RequirePermissions('orders.read')
+  @Get('admin/attention')
+  adminAttention(@CurrentUser() user: AuthUser, @Query('storeId') storeId?: string) {
+    return this.orders.adminAttention(this.resolveStoreId(user, storeId));
+  }
+
+  @RequirePermissions('orders.read')
   @Get('admin/returns')
   adminReturns(@CurrentUser() user: AuthUser, @Query('status') status?: ReturnStatus, @Query('storeId') storeId?: string) {
     return this.orders.adminReturns(this.resolveStoreId(user, storeId), status);
@@ -100,7 +106,7 @@ export class OrdersController {
   @Audit('orders.resolve-return', 'return')
   @Patch('admin/returns/:id')
   resolveReturn(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ResolveReturnDto, @Query('storeId') storeId?: string) {
-    return this.orders.resolveReturn(this.resolveStoreId(user, storeId), id, dto.action, dto.resolution);
+    return this.orders.resolveReturn(this.resolveStoreId(user, storeId), id, dto.action, dto.resolution, dto.pickup);
   }
 
   @RequirePermissions('orders.read')
@@ -113,7 +119,7 @@ export class OrdersController {
   @Audit('orders.update-status', 'order')
   @Patch('admin/:id/status')
   updateStatus(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateOrderStatusDto, @Query('storeId') storeId?: string) {
-    return this.orders.updateStatus(this.resolveStoreId(user, storeId), id, dto.status, dto.note);
+    return this.orders.updateStatus(this.resolveStoreId(user, storeId), id, dto.status, dto.note, { awb: dto.awb, courierName: dto.courierName });
   }
 
   @RequirePermissions('orders.update')
