@@ -689,6 +689,8 @@ model Order {
   courierName      String?
   // 'bharatship' when booked through the courier integration, 'manual' when the admin shipped it themselves.
   shipmentProvider String?
+  // Latest courier status title from BharatShip tracking (e.g. "In Transit", "RTO").
+  courierStatus    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

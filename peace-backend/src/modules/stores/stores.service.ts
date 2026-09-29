@@ -5,6 +5,7 @@ import { defaultSiteConfig } from '../site-config/default-site-config';
 import { DEFAULT_ADMIN_PERMISSIONS, DEFAULT_STAFF_PERMISSIONS } from '../access/permissions.catalog';
 import { MastersService } from '../masters/masters.service';
 import { CreateStoreDto } from './dto/create-store.dto';
+import { resolveShipping } from '../orders/checkout.config';
 
 @Injectable()
 export class StoresService {
@@ -46,7 +47,9 @@ export class StoresService {
 
   async getSettings(storeId: string) {
     const store = await this.prisma.store.findUnique({ where: { id: storeId }, select: { settings: true } });
-    return store?.settings ?? {};
+    const settings = (store?.settings ?? {}) as Record<string, unknown>;
+    // Always hand the editor the effective shipping rules, so it never keeps its own copy of the defaults.
+    return { ...settings, shipping: resolveShipping(settings, true) };
   }
 
   async updateSettings(storeId: string, settings: Record<string, unknown>) {

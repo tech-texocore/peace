@@ -44,7 +44,7 @@ const DEFAULT_SHIPPING: ShippingConfig = {
 const amount = (v: unknown, fallback: number) =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
 
-function resolveMethods(raw: unknown): DeliveryMethod[] {
+function resolveMethods(raw: unknown, includeDisabled: boolean): DeliveryMethod[] {
   if (!Array.isArray(raw)) return DEFAULT_METHODS;
   return raw
     .filter((m): m is Partial<DeliveryMethod> => !!m && typeof m === 'object')
@@ -62,10 +62,11 @@ function resolveMethods(raw: unknown): DeliveryMethod[] {
       days: Math.max(1, Math.round(amount(m.days, 1))),
       enabled: m.enabled !== false,
     }))
-    .filter((m) => m.enabled);
+    .filter((m) => includeDisabled || m.enabled);
 }
 
-export function resolveShipping(settings: unknown): ShippingConfig {
+// includeDisabled keeps switched-off delivery options (the admin editor needs them; checkout does not).
+export function resolveShipping(settings: unknown, includeDisabled = false): ShippingConfig {
   const s = (settings as Record<string, unknown> | null)?.shipping as
     Partial<ShippingConfig> | undefined;
   if (!s) return DEFAULT_SHIPPING;
@@ -80,7 +81,7 @@ export function resolveShipping(settings: unknown): ShippingConfig {
         ? s.codEnabled
         : DEFAULT_SHIPPING.codEnabled,
     codFee: amount(s.codFee, DEFAULT_SHIPPING.codFee),
-    methods: resolveMethods(s.methods),
+    methods: resolveMethods(s.methods, includeDisabled),
   };
 }
 

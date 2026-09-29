@@ -1,18 +1,29 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { OrderStatus, ReturnStatus, Prisma } from '@prisma/client';
+import { OrderStatus, PaymentMethod, PaymentStatus, ReturnStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PricingService } from '../discounts/pricing.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
 import { ShippingService } from '../../infra/shipping/shipping.service';
-import type { ShipmentInput } from '../../infra/shipping/shipping.types';
+import type { ShipmentInput, TrackingResult } from '../../infra/shipping/shipping.types';
 import { qualifiesForFreeDelivery, resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
 import { MetaCapiService, type MetaContext } from '../meta/meta-capi.service';
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const CANCELLABLE: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PACKED'];
+
+// BharatShip shipment_status codes that need the admin's attention.
+const COURIER_DELIVERED = 5;
+const COURIER_ALERTS: Record<number, string> = {
+  6: 'the courier cancelled this shipment; ship it again or cancel the order',
+  7: 'returning to you (RTO); cancel the order once it is back',
+  8: 'delivery failed; contact the customer',
+  11: 'delivery attempt failed (NDR); contact the customer',
+  15: 'shipment lost; raise it with BharatShip',
+  19: 'returned to you; cancel the order to restock',
+};
 
 // What an admin may move an order to from each status. Unpaid online orders are
 // confirmed only by the payment itself; returns go through the Returns flow.
@@ -130,6 +141,52 @@ export class OrdersService {
     if (!order?.awb) throw new BadRequestException('No shipment to track yet');
     if (order.shipmentProvider !== 'bharatship') throw new BadRequestException('Live tracking is only available for BharatShip shipments');
     return this.trackShipment(order.awb);
+  }
+
+  // Pull courier status for shipped BharatShip orders: delivered orders are closed automatically,
+  // anything that needs the admin (RTO, lost, courier-cancelled) is written to the timeline once.
+  @Cron(CronExpression.EVERY_2_HOURS)
+  async syncCourierStatus() {
+    if (!this.shipping.configured) return;
+    const shipped = await this.prisma.order.findMany({
+      where: { status: 'SHIPPED', shipmentProvider: 'bharatship', awb: { not: null } },
+      select: { id: true, orderNumber: true, awb: true, courierStatus: true, paymentMethod: true, paymentStatus: true },
+    });
+    for (const order of shipped) {
+      try {
+        await this.applyCourierStatus(order, await this.shipping.track(order.awb!));
+      } catch (err) {
+        this.logger.warn(`Courier status sync failed for ${order.orderNumber}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  private async applyCourierStatus(
+    order: { id: string; orderNumber: string; courierStatus: string | null; paymentMethod: PaymentMethod; paymentStatus: PaymentStatus },
+    tracking: TrackingResult,
+  ) {
+    if (tracking.code == null || tracking.status === order.courierStatus) return;
+    if (tracking.code === COURIER_DELIVERED) {
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: 'DELIVERED',
+          courierStatus: tracking.status,
+          paymentStatus: order.paymentMethod === 'COD' ? 'PAID' : order.paymentStatus,
+          events: { create: { status: 'DELIVERED', note: 'Delivered — confirmed by courier' } },
+        },
+      });
+      void this.notifyOrder(order.id, `Order ${order.orderNumber} update`, `Your order ${STATUS_MESSAGE.DELIVERED}.`);
+      return;
+    }
+    const alert = COURIER_ALERTS[tracking.code];
+    await this.prisma.order.update({
+      where: { id: order.id },
+      data: {
+        courierStatus: tracking.status,
+        ...(alert && { events: { create: { status: 'SHIPPED', note: `Courier: ${tracking.status} — ${alert}` } } }),
+      },
+    });
   }
 
   // Release stock held by online orders that were never paid — otherwise abandoned
@@ -356,7 +413,28 @@ export class OrdersService {
       include: { items: true, events: { orderBy: { createdAt: 'asc' } }, returns: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
     if (!order) throw new NotFoundException('Order not found');
-    return this.serialize(order);
+    return { ...this.serialize(order), events: this.customerTimeline(order) };
+  }
+
+  // Customers see one plain-language step per status; admin notes and system details stay internal.
+  private customerTimeline(order: {
+    status: OrderStatus; paymentMethod: PaymentMethod; paymentStatus: PaymentStatus; courierName: string | null;
+    events: { id: string; status: OrderStatus; createdAt: Date }[];
+  }) {
+    const online = order.paymentMethod === 'RAZORPAY';
+    const text: Record<OrderStatus, string> = {
+      PENDING: 'Awaiting payment',
+      CONFIRMED: online ? 'Payment received — order confirmed' : 'Order placed',
+      PACKED: 'Packed and ready to ship',
+      SHIPPED: order.courierName ? `Shipped with ${order.courierName}` : 'Shipped',
+      DELIVERED: 'Delivered',
+      CANCELLED: order.paymentStatus === 'REFUNDED' ? 'Cancelled — refund initiated to your original payment method' : 'Cancelled',
+      RETURNED: 'Returned — refund processed',
+    };
+    const seen = new Set<OrderStatus>();
+    return order.events
+      .filter((e) => !seen.has(e.status) && seen.add(e.status))
+      .map((e) => ({ id: e.id, status: e.status, note: text[e.status], createdAt: e.createdAt }));
   }
 
   async invoiceFor(uid: string, id: string) {
@@ -693,7 +771,7 @@ export class OrdersService {
     taxAmount: Prisma.Decimal; shippingFee: Prisma.Decimal; total: Prisma.Decimal; currency: string;
     couponCode: string | null; paymentMethod: string; paymentStatus: string; deliveryMethod: string;
     estimatedDelivery: Date | null; shippingAddress: Prisma.JsonValue; notes: string | null; createdAt: Date;
-    awb?: string | null; courierName?: string | null; shipmentProvider?: string | null;
+    awb?: string | null; courierName?: string | null; shipmentProvider?: string | null; courierStatus?: string | null;
     items?: unknown[]; events?: unknown[];
     returns?: { id: string; type: string; reason: string; status: string; resolution: string | null; refundId: string | null; refundAmount: Prisma.Decimal | null; reverseAwb: string | null; pickedUpAt: Date | null; refundedAt: Date | null; createdAt: Date }[];
   }) {
@@ -705,7 +783,7 @@ export class OrdersService {
       paymentMethod: o.paymentMethod, paymentStatus: o.paymentStatus,
       deliveryMethod: o.deliveryMethod, estimatedDelivery: o.estimatedDelivery,
       shippingAddress: o.shippingAddress, notes: o.notes, createdAt: o.createdAt,
-      awb: o.awb ?? null, courierName: o.courierName ?? null, shipmentProvider: o.shipmentProvider ?? null,
+      awb: o.awb ?? null, courierName: o.courierName ?? null, shipmentProvider: o.shipmentProvider ?? null, courierStatus: o.courierStatus ?? null,
       items: o.items, events: o.events,
       returnRequest: rr ? { id: rr.id, type: rr.type, reason: rr.reason, status: rr.status, resolution: rr.resolution, refundId: rr.refundId, refundAmount: rr.refundAmount != null ? Number(rr.refundAmount) : null, reverseAwb: rr.reverseAwb, pickedUpAt: rr.pickedUpAt, refundedAt: rr.refundedAt, createdAt: rr.createdAt } : null,
     };

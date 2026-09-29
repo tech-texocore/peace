@@ -12,16 +12,6 @@ type DeliveryMethod = { key: string; label: string; fee: number; days: number; e
 type Shipping = { freeForAll: boolean; freeShippingThreshold: number; codEnabled: boolean; codFee: number; methods: DeliveryMethod[] };
 type FreeMode = "none" | "above" | "all";
 
-const DEFAULT_SHIPPING: Shipping = {
-  freeForAll: false,
-  freeShippingThreshold: 999,
-  codEnabled: true,
-  codFee: 0,
-  methods: [
-    { key: "standard", label: "Standard Delivery", fee: 49, days: 5, enabled: true },
-    { key: "express", label: "Express Delivery", fee: 99, days: 2, enabled: true },
-  ],
-};
 
 const FREE_MODES: { mode: FreeMode; label: string }[] = [
   { mode: "none", label: "No free delivery" },
@@ -36,6 +26,7 @@ export default function SettingsPage() {
   const [s, setS] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const q = storeId ? `?storeId=${storeId}` : "";
   const canEdit = hasPermission("settings.update");
@@ -58,29 +49,39 @@ export default function SettingsPage() {
   }
 
   async function save() {
-    if (!s) return;
-    if (!shipping.methods.some((m) => m.enabled)) return;
-    setSaving(true);
-    await api.put(`/stores/settings${q}`, { settings: s }, { auth: true });
-    setSaving(false);
-    setStatus("Saved");
+    if (!s || shippingError) return;
+    setSaving(true); setSaveError(null);
+    try {
+      setS(await api.put<Settings>(`/stores/settings${q}`, { settings: s }, { auth: true }));
+      setChosenFreeMode(null);
+      setStatus("Saved");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save settings");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const saved = s?.shipping as Partial<Shipping> | undefined;
-  const shipping: Shipping = {
-    ...DEFAULT_SHIPPING,
-    ...saved,
-    methods: (saved?.methods?.length ? saved.methods : DEFAULT_SHIPPING.methods).map((m) => ({ ...m, enabled: m.enabled !== false })),
-  };
-  const freeMode: FreeMode = shipping.freeForAll ? "all" : shipping.freeShippingThreshold > 0 ? "above" : "none";
+
+  const shipping = s?.shipping as Shipping | undefined;
+  const [chosenFreeMode, setChosenFreeMode] = useState<FreeMode | null>(null);
+  const freeMode: FreeMode = chosenFreeMode ?? (shipping?.freeForAll ? "all" : (shipping?.freeShippingThreshold ?? 0) > 0 ? "above" : "none");
   const setShipping = (patch: Partial<Shipping>) => set(["shipping"], { ...shipping, ...patch });
   const setMethod = (i: number, patch: Partial<DeliveryMethod>) =>
-    setShipping({ methods: shipping.methods.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
-  const setFreeMode = (mode: FreeMode) =>
-    setShipping({
-      freeForAll: mode === "all",
-      freeShippingThreshold: mode === "above" ? shipping.freeShippingThreshold || DEFAULT_SHIPPING.freeShippingThreshold : 0,
-    });
+    setShipping({ methods: shipping!.methods.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
+  const [lastThreshold, setLastThreshold] = useState(0);
+  const setFreeMode = (mode: FreeMode) => {
+    if (shipping?.freeShippingThreshold) setLastThreshold(shipping.freeShippingThreshold);
+    setChosenFreeMode(mode);
+    setShipping({ freeForAll: mode === "all", freeShippingThreshold: mode === "above" ? shipping?.freeShippingThreshold || lastThreshold : 0 });
+  };
+  const shippingError = !shipping
+    ? null
+    : !shipping.methods.some((m) => m.enabled)
+      ? "Keep at least one delivery option on."
+      : freeMode === "above" && !(shipping.freeShippingThreshold > 0)
+        ? "Enter the order amount for free delivery."
+        : null;
 
   if (!s) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted" /></div>;
 
@@ -88,7 +89,7 @@ export default function SettingsPage() {
     <div className="w-full">
       <div className="mb-5">
         <h1 className="font-display text-2xl font-medium">Site Settings</h1>
-        <p className="text-sm text-muted">Your website's identity, contact and defaults.</p>
+        <p className="text-sm text-muted">Your website&apos;s identity, contact and defaults.</p>
       </div>
 
       <div className={cn("grid gap-4 lg:grid-cols-2 lg:items-start", !canEdit && "pointer-events-none opacity-70")}>
@@ -114,6 +115,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="space-y-4">
+          {shipping && (
           <section className="rounded-2xl border border-line bg-card p-5">
             <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest text-muted">Shipping & delivery</h2>
             <p className="mb-4 text-xs text-muted">What customers pay for delivery at checkout. Changes apply as soon as you save.</p>
@@ -129,7 +131,7 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
-            {!shipping.methods.some((m) => m.enabled) && <p className="mt-2 text-xs text-danger">Keep at least one delivery option on.</p>}
+
 
             <span className="mb-1.5 mt-5 block text-xs font-semibold uppercase tracking-wide text-muted">Free delivery</span>
             <div className="grid gap-2 sm:grid-cols-3">
@@ -141,7 +143,7 @@ export default function SettingsPage() {
             </div>
             {freeMode === "above" && (
               <div className="mt-3 max-w-[14rem]">
-                <Field label="Free when order is at least (₹)" inputMode="numeric" value={String(shipping.freeShippingThreshold)} onChange={(v) => setShipping({ freeShippingThreshold: Math.max(1, toNumber(v)) })} />
+                <Field label="Free when order is at least (₹)" inputMode="numeric" value={shipping.freeShippingThreshold ? String(shipping.freeShippingThreshold) : ""} onChange={(v) => setShipping({ freeShippingThreshold: toNumber(v) })} placeholder="e.g. 999" />
               </div>
             )}
             <p className="mt-2 text-xs text-muted">Free-shipping coupons (Marketing → Discounts) also make delivery free.</p>
@@ -157,8 +159,10 @@ export default function SettingsPage() {
               )}
             </div>
 
+            {shippingError && <p className="mt-4 rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{shippingError}</p>}
             <p className="mt-5 rounded-lg bg-line/40 px-3 py-2 text-xs text-muted">If you change free delivery, also update texts like “Free shipping over ₹999” in <span className="font-medium text-ink">Site Config</span> (announcement bar and scrolling strip).</p>
           </section>
+          )}
 
           <section className="rounded-2xl border border-line bg-card p-5">
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted">Contact & social</h2>
@@ -182,8 +186,9 @@ export default function SettingsPage() {
 
       {canEdit && (
         <div className="sticky bottom-4 mt-6 flex items-center justify-end gap-3">
+          {saveError && <span className="text-sm text-danger">{saveError}</span>}
           {status && <span className="flex items-center gap-1 text-sm text-accent"><Check className="h-4 w-4" /> {status}</span>}
-          <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-full bg-accent px-8 py-3 text-xs font-semibold uppercase tracking-widest text-accent-foreground hover:opacity-90 disabled:opacity-50">
+          <button onClick={save} disabled={saving || Boolean(shippingError)} className="flex items-center gap-2 rounded-full bg-accent px-8 py-3 text-xs font-semibold uppercase tracking-widest text-accent-foreground hover:opacity-90 disabled:opacity-50">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save settings
           </button>
         </div>

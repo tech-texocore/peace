@@ -22,7 +22,9 @@ const server = http.createServer((req, res) => {
     }
     if (path === '/api/v1/create-order' || path === '/api/v1/create-reverse-order') {
       const order = JSON.parse(body || '{}');
-      if (!order.courier_code) return send(res, 422, { status: false, message: 'Validation error', errors: { courier_code: ['Courier Code is required.'] } });
+      if (Number(order.courier_ship_type) === 1 && !order.courier_code) return send(res, 422, { status: false, message: 'Validation error', errors: { courier_code: ['Courier Code is required if courier_ship_type is 1.'] } });
+      const weights = [].concat(order.weight ?? []);
+      if (!weights.length || weights.some((w) => !(Number(w) > 0) || Number(w) > 50)) return send(res, 422, { status: false, message: 'Validation error', errors: { weight: [`Weight must be in kg (got ${weights.join(', ')})`] } });
     }
     if (path === '/api/v1/create-order') {
       if (FAIL === 'order') return send(res, 200, { status: false, message: 'Pincode not serviceable' });
@@ -35,14 +37,25 @@ const server = http.createServer((req, res) => {
     }
     if (path === '/api/v1/tracking-order') {
       if (FAIL === 'track') return send(res, 200, { status: false, message: 'AWB not found' });
+      const code = Number(process.env.MOCK_TRACK_STATUS || 4);
+      const titles = { 1: 'Booked', 4: 'In Transit', 5: 'Delivered', 7: 'RTO', 22: 'Out For Delivery' };
+      const awb = JSON.parse(body || '{}').awb;
       return send(res, 200, {
-        status: true, current_status: 'In Transit', courier_name: 'XpressBees',
-        tracking_data: [
-          { status: 'Out for delivery', location: 'Coimbatore', date: '2026-08-21 09:10' },
-          { status: 'In Transit', location: 'Salem Hub', date: '2026-08-20 22:40' },
-          { status: 'Picked Up', location: 'Delhi Warehouse', date: '2026-08-19 18:05' },
-        ],
+        status: true, message: 'Success',
+        data: {
+          summary: { awb, payment_mode: 'PPD', express_type: 'surface', zone: 'A', shipment_status: code },
+          history: [
+            { shipment_status: code, tracking_date: '2026-08-21 09:10:00', location: 'Coimbatore', log_desc: null, awb, status_title: titles[code] ?? `Status ${code}` },
+            { shipment_status: 1, tracking_date: '2026-08-19 18:05:00', location: null, log_desc: null, awb, status_title: 'Booked' },
+          ],
+        },
       });
+    }
+    if (path === '/api/v1/courier-list') {
+      return send(res, 200, { status: true, data: [
+        { courier_name: 'BlueDart', courier_code: 'blueDart' }, { courier_name: 'Delhivery', courier_code: 'delhivery' },
+        { courier_name: 'DTDC', courier_code: 'dtdc' }, { courier_name: 'XpressBees', courier_code: 'Xpress' },
+      ] });
     }
     if (path === '/api/v1/cancel-order') return send(res, 200, { status: true, message: 'Order cancelled' });
     return send(res, 404, { status: false, message: 'Not found' });

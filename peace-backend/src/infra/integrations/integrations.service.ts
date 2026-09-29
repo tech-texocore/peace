@@ -61,6 +61,17 @@ export class IntegrationsService implements OnModuleInit {
     return masked;
   }
 
+  private validateBharatShip(key: string, value: string) {
+    const rules: Record<string, [RegExp, string]> = {
+      pickupAddressId: [/^\d+$/, 'Pickup warehouse ID must be the number from BharatShip → Warehouses'],
+      shippingMode: [/^(surface|air)$/, 'Shipping mode must be surface or air'],
+      defaultWeightGrams: [/^\d{1,5}$/, 'Parcel weight must be in grams, e.g. 500'],
+      parcelSizeCm: [/^\d{1,3}\s*x\s*\d{1,3}\s*x\s*\d{1,3}$/i, 'Parcel size must be length x width x height in cm, e.g. 25x20x3'],
+    };
+    const rule = rules[key];
+    if (rule && !rule[0].test(value)) throw new BadRequestException(rule[1]);
+  }
+
   async update(
     storeId: string,
     patch: Record<string, Record<string, string>>,
@@ -113,6 +124,7 @@ export class IntegrationsService implements OnModuleInit {
             'Razorpay Key ID must start with rzp_live_ or rzp_test_',
           );
         }
+        if (group === 'bharatship' && value) this.validateBharatShip(key, value);
         if (fields[key] && (!value || value === MASK)) continue;
         (merged[group] as Record<string, string>)[key] = value;
       }

@@ -7,7 +7,9 @@ export const INTEGRATION_FIELDS = {
     password: true,
     pickupAddressId: false,
     courierCode: false,
+    shippingMode: false,
     defaultWeightGrams: false,
+    parcelSizeCm: false,
     apiBase: false,
   },
   email: {

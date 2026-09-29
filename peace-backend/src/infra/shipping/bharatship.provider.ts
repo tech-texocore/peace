@@ -3,8 +3,12 @@ import { IntegrationsService } from '../integrations/integrations.service';
 import type { ShipmentInput, ShipmentResult, TrackingResult } from './shipping.types';
 
 // BharatShip (app.bharatship.com) courier aggregator — REST + Bearer token.
+// API reference: https://documenter.getpostman.com/view/50218431/2sB3dHWDP6
 // Auth: POST /api/authToken {email,password} -> { token }. Token cached until near expiry.
 // Keys come from admin → Integrations; a save there takes effect immediately.
+type BookingResponse = { waybill?: string; order_id?: number; message?: string; courierName?: string };
+type TrackingScan = { shipment_status?: number; status_title?: string; tracking_date?: string; location?: string | null; log_desc?: string | null };
+
 @Injectable()
 export class BharatShipProvider {
   readonly name = 'bharatship';
@@ -22,6 +26,12 @@ export class BharatShipProvider {
   private get pickupAddressId() { return this.s.pickupAddressId; }
   private get defaultWeightGrams() { return Number(this.s.defaultWeightGrams) || 500; }
   private get courierCode() { return this.s.courierCode || undefined; }
+  private get shippingMode() { return this.s.shippingMode || 'surface'; }
+  // Parcel size in cm as "length x width x height" (default fits a folded garment).
+  private get parcel() {
+    const [length, width, height] = (this.s.parcelSizeCm || '25x20x3').split(/\s*x\s*/i);
+    return { length, width, height };
+  }
 
   get configured() { return Boolean(this.email && this.password && this.pickupAddressId); }
 
@@ -75,6 +85,16 @@ export class BharatShipProvider {
     return details.length ? `${base} — ${details.join('; ')}` : base;
   }
 
+  // courier_ship_type 1 books the configured courier; 2 lets BharatShip pick by the account's courier priority.
+  private courierSelection() {
+    return this.courierCode ? { courier_ship_type: 1, courier_code: this.courierCode } : { courier_ship_type: 2 };
+  }
+
+  // BharatShip takes weight in kilograms; the admin setting is in grams.
+  private weightKg(input: ShipmentInput) {
+    return String((input.weightGrams ?? this.defaultWeightGrams) / 1000);
+  }
+
   private orderPayload(input: ShipmentInput) {
     return {
       client_order_id: input.orderNumber,
@@ -101,54 +121,54 @@ export class BharatShipProvider {
       appointment: 'no',
       mps: 'no',
       insurance: 0,
-      weight: [String(input.weightGrams ?? this.defaultWeightGrams)],
-      length: ['25'],
-      width: ['20'],
-      height: ['3'],
-      no_box: ['1'],
-      express: 'surface',
-      courier_ship_type: 1,
-      ...(this.courierCode ? { courier_code: this.courierCode } : {}),
+      express: this.shippingMode,
+      ...this.courierSelection(),
       callback_url: '',
     };
   }
 
-  // BharatShip rejects bookings without a courier; it does not pick one itself.
-  private requireCourierCode() {
-    if (!this.courierCode) {
-      throw new BadRequestException('Add your BharatShip courier code in Integrations → BharatShip → Courier code, then try again.');
-    }
-  }
-
   async createShipment(input: ShipmentInput): Promise<ShipmentResult> {
-    this.requireCourierCode();
-    const payload = { ...this.orderPayload(input), payment_mode: input.paymentMode, consignee_emailid: input.recipient.email ?? '' };
-    const r = await this.call<{ waybill?: string; order_id?: number; message?: string }>('/api/v1/create-order', payload);
+    const payload = {
+      ...this.orderPayload(input),
+      payment_mode: input.paymentMode,
+      consignee_emailid: input.recipient.email ?? '',
+      weight: [this.weightKg(input)],
+      length: [this.parcel.length],
+      width: [this.parcel.width],
+      height: [this.parcel.height],
+      no_box: ['1'],
+    };
+    const r = await this.call<BookingResponse>('/api/v1/create-order', payload);
     if (!r.waybill) throw new BadRequestException(r.message ?? 'Courier did not return a tracking number.');
-    return { awb: r.waybill, courierName: this.courierFromMessage(r.message), providerOrderId: r.order_id ?? null };
+    return { awb: r.waybill, courierName: r.courierName ?? this.courierFromMessage(r.message), providerOrderId: r.order_id ?? null };
   }
 
   async createReverseShipment(input: ShipmentInput): Promise<ShipmentResult> {
-    this.requireCourierCode();
-    const payload = this.orderPayload(input);
-    const r = await this.call<{ waybill?: string; order_id?: number; message?: string }>('/api/v1/create-reverse-order', payload);
+    const payload = {
+      ...this.orderPayload(input),
+      weight: this.weightKg(input),
+      ...this.parcel,
+    };
+    const r = await this.call<BookingResponse>('/api/v1/create-reverse-order', payload);
     if (!r.waybill) throw new BadRequestException(r.message ?? 'Courier did not return a reverse tracking number.');
-    return { awb: r.waybill, courierName: this.courierFromMessage(r.message), providerOrderId: r.order_id ?? null };
+    return { awb: r.waybill, courierName: r.courierName ?? this.courierFromMessage(r.message), providerOrderId: r.order_id ?? null };
   }
 
   async track(awb: string): Promise<TrackingResult> {
-    const r = await this.call<Record<string, unknown>>('/api/v1/tracking-order', { awb });
-    const scans = (r.tracking_data ?? r.scans ?? r.data ?? []) as Array<Record<string, unknown>>;
-    const events = (Array.isArray(scans) ? scans : []).map((s) => ({
-      status: String(s.status ?? s.activity ?? s.remark ?? ''),
-      location: (s.location as string) ?? (s.city as string) ?? null,
-      time: (s.date as string) ?? (s.timestamp as string) ?? (s.time as string) ?? null,
-    }));
-    return { awb, status: String(r.current_status ?? events[0]?.status ?? 'Awaiting courier update'), courierName: (r.courier_name as string) ?? null, events };
+    const r = await this.call<{ data?: { summary?: { shipment_status?: number }; history?: TrackingScan[] } }>('/api/v1/tracking-order', { awb });
+    const history = Array.isArray(r.data?.history) ? r.data.history : [];
+    const events = history.map((h) => ({ status: h.status_title ?? '', location: h.location ?? h.log_desc ?? null, time: h.tracking_date ?? null }));
+    const code = r.data?.summary?.shipment_status ?? history[0]?.shipment_status ?? null;
+    return { awb, code, status: history[0]?.status_title ?? (code != null ? `Status ${code}` : 'Awaiting courier update'), courierName: null, events };
   }
 
   async cancel(awb: string): Promise<void> {
     await this.call('/api/v1/cancel-order', { awb });
+  }
+
+  async courierList(): Promise<{ code: string; name: string }[]> {
+    const r = await this.call<{ data?: { courier_code?: string; courier_name?: string }[] }>('/api/v1/courier-list', undefined, 'GET');
+    return (r.data ?? []).filter((c) => c.courier_code).map((c) => ({ code: c.courier_code!, name: c.courier_name ?? c.courier_code! }));
   }
 
   private courierFromMessage(message?: string): string | null {

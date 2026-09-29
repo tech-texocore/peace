@@ -341,6 +341,7 @@ function OrderDrawer({ order, onClose, canUpdate, busy, note, setNote, setStatus
                 ? <button onClick={doTrack} disabled={trkBusy} className="rounded-full border border-line px-3 py-1.5 text-xs font-medium hover:bg-accent-soft disabled:opacity-50">{trkBusy ? "Tracking…" : "Track"}</button>
                 : <span className="text-xs text-muted">Shipped manually</span>}
             </div>
+            {!trk && order.courierStatus && <p className="mt-2 text-xs text-muted">Courier status: <span className="text-ink">{order.courierStatus}</span></p>}
             {trk && <p className="mt-2 text-xs text-muted">Status: <span className="text-ink">{trk.status}</span>{trk.events[0]?.location ? ` · ${trk.events[0].location}` : ""}</p>}
           </div>
         )}
@@ -420,7 +421,7 @@ function OrderActions({ order, busy, note, setNote, setStatus, ship, actionErr }
 }
 
 const STEP_HINT: Partial<Record<OrderStatus, (o: AdminOrder) => string>> = {
-  PENDING: (o) => `Waiting for online payment — auto-cancels after ${o.paymentWindowMinutes ?? 30} min if unpaid`,
+  PENDING: (o) => `Waiting for online payment — auto-cancels after ${o.paymentWindowMinutes} min if unpaid`,
   CONFIRMED: () => "Pack the order, then ship it",
   PACKED: () => "Ready to ship",
   SHIPPED: (o) => (o.paymentMethod === "COD" ? "Mark delivered once the courier delivers — records the COD payment" : "Mark delivered once the courier delivers"),

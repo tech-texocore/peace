@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/admin/page-header";
 import { cn } from "@/lib/utils/cn";
 
 type Integrations = Record<string, Record<string, string>>;
-type FieldDef = { k: string; label: string; secret?: boolean; placeholder?: string; generate?: boolean };
+type FieldDef = { k: string; label: string; secret?: boolean; placeholder?: string; generate?: boolean; courier?: boolean; options?: [string, string][] };
 type Group = { key: string; label: string; hint: string; fields: FieldDef[]; testable?: boolean; pending?: boolean; required: string[] };
 
 const MASK = "••••••••";
@@ -27,14 +27,16 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    key: "bharatship", label: "BharatShip — Courier", testable: true, required: ["email", "password", "pickupAddressId", "courierCode"],
-    hint: "Book shipments, live tracking and return pickups from the order screen. Use your app.bharatship.com login. BharatShip needs a courier code on every booking — get your codes from BharatShip support. Empty = ship manually.",
+    key: "bharatship", label: "BharatShip — Courier", testable: true, required: ["email", "password", "pickupAddressId"],
+    hint: "Book shipments, live tracking and return pickups from the order screen. Use your app.bharatship.com login. Delivered status updates automatically from the courier. Empty = ship manually.",
     fields: [
       { k: "email", label: "Login email" },
       { k: "password", label: "Password", secret: true },
       { k: "pickupAddressId", label: "Pickup warehouse ID", placeholder: "From BharatShip → Warehouses" },
-      { k: "courierCode", label: "Courier code", placeholder: "From BharatShip support" },
+      { k: "courierCode", label: "Courier", courier: true },
+      { k: "shippingMode", label: "Shipping mode", options: [["surface", "Surface (cheaper)"], ["air", "Air (faster)"]] },
       { k: "defaultWeightGrams", label: "Default parcel weight (grams)", placeholder: "500" },
+      { k: "parcelSizeCm", label: "Parcel size in cm (L x W x H)", placeholder: "25x20x3" },
       { k: "apiBase", label: "API URL", placeholder: "https://app.bharatship.com" },
     ],
   },
@@ -144,6 +146,16 @@ export default function IntegrationsPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {g.fields.map((f) => (
                   <div key={f.k}>
+                    {f.courier ? (
+                      <CourierPicker value={form[g.key]?.[f.k] ?? ""} onChange={(v) => set(g.key, f.k, v)} q={q} />
+                    ) : f.options ? (
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">{f.label}</span>
+                        <select value={form[g.key]?.[f.k] || f.options[0][0]} onChange={(e) => set(g.key, f.k, e.target.value)} className="h-11 w-full rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent">
+                          {f.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </label>
+                    ) : (
                     <Field
                       label={f.label}
                       type={f.secret ? "password" : "text"}
@@ -154,6 +166,7 @@ export default function IntegrationsPage() {
                       onChange={(v) => set(g.key, f.k, v)}
                       placeholder={f.secret && saved(g.key, f.k) ? "Saved — leave blank to keep" : f.placeholder ?? ""}
                     />
+                    )}
                     <div className="mt-1 flex items-center gap-3 text-xs">
                       {f.secret && data[g.key]?.[f.k] === MASK && <span className="flex items-center gap-1 text-accent"><ShieldCheck className="h-3 w-3" /> Saved</span>}
                       {f.generate && (
@@ -202,6 +215,39 @@ export default function IntegrationsPage() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+type Courier = { code: string; name: string };
+
+// Couriers come from the connected BharatShip account; empty = BharatShip picks by the priority set in its panel.
+function CourierPicker({ value, onChange, q }: { value: string; onChange: (v: string) => void; q: string }) {
+  const [couriers, setCouriers] = useState<Courier[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    setLoading(true); setError("");
+    try { setCouriers(await api.get<Courier[]>(`/stores/integrations/bharatship/couriers${q}`, { auth: true })); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not load couriers"); }
+    finally { setLoading(false); }
+  }
+
+  const options = couriers ?? (value ? [{ code: value, name: value }] : []);
+  return (
+    <div>
+      <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">Courier</span>
+      <div className="flex gap-2">
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 text-sm outline-none focus:border-accent">
+          <option value="">Auto — BharatShip picks by priority</option>
+          {options.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+        </select>
+        <button type="button" onClick={load} disabled={loading} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 text-xs font-medium hover:border-accent hover:text-accent disabled:opacity-50">
+          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} {couriers ? "Reload" : "Load couriers"}
+        </button>
+      </div>
+      {error ? <p className="mt-1 text-xs text-danger">{error}</p> : <p className="mt-1 text-xs text-muted">Couriers active on your BharatShip account.</p>}
     </div>
   );
 }

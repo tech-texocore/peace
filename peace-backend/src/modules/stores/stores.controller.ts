@@ -16,6 +16,7 @@ import {
   type AuthUser,
 } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from '../../infra/integrations/integrations.service';
+import { ShippingService } from '../../infra/shipping/shipping.service';
 import {
   SUPER_ADMIN_GROUPS,
   type IntegrationGroup,
@@ -32,6 +33,7 @@ export class StoresController {
   constructor(
     private readonly stores: StoresService,
     private readonly integrations: IntegrationsService,
+    private readonly shipping: ShippingService,
   ) {}
 
   @Roles('SUPER_ADMIN')
@@ -92,6 +94,16 @@ export class StoresController {
       dto.integrations,
       user.role === 'SUPER_ADMIN',
     );
+  }
+
+  // Couriers active on the connected BharatShip account, for choosing the courier code.
+  @RequirePermissions('integrations.read')
+  @Get('integrations/bharatship/couriers')
+  bharatshipCouriers() {
+    if (!this.shipping.configured) {
+      throw new BadRequestException('Save the BharatShip login and pickup warehouse ID first');
+    }
+    return this.shipping.courierList();
   }
 
   @RequirePermissions('integrations.update')

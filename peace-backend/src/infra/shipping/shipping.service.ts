@@ -24,4 +24,8 @@ export class ShippingService {
   cancel(awb: string): Promise<void> {
     return this.provider.cancel(awb);
   }
+
+  courierList() {
+    return this.provider.courierList();
+  }
 }

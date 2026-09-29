@@ -26,7 +26,7 @@ export interface Order {
   couponCode: string | null; paymentMethod: PaymentMethod; paymentStatus: string;
   deliveryMethod: string; estimatedDelivery: string | null; shippingAddress: ShippingAddress;
   notes: string | null; createdAt: string; items: OrderItem[]; events?: OrderEvent[];
-  awb?: string | null; courierName?: string | null; shipmentProvider?: "bharatship" | "manual" | null;
+  awb?: string | null; courierName?: string | null; shipmentProvider?: "bharatship" | "manual" | null; courierStatus?: string | null;
   returnRequest?: {
     id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: ReturnStatus;
     resolution: string | null; refundId: string | null; refundAmount: number | null;

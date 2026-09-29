@@ -31,6 +31,8 @@ export interface TrackingEvent {
 
 export interface TrackingResult {
   awb: string;
+  // BharatShip shipment_status code (5 = Delivered, 7 = RTO, …); null when unknown.
+  code?: number | null;
   status: string;
   courierName?: string | null;
   events: TrackingEvent[];
