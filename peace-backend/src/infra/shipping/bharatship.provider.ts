@@ -113,7 +113,15 @@ export class BharatShipProvider {
     };
   }
 
+  // BharatShip rejects bookings without a courier; it does not pick one itself.
+  private requireCourierCode() {
+    if (!this.courierCode) {
+      throw new BadRequestException('Add your BharatShip courier code in Integrations → BharatShip → Courier code, then try again.');
+    }
+  }
+
   async createShipment(input: ShipmentInput): Promise<ShipmentResult> {
+    this.requireCourierCode();
     const payload = { ...this.orderPayload(input), payment_mode: input.paymentMode, consignee_emailid: input.recipient.email ?? '' };
     const r = await this.call<{ waybill?: string; order_id?: number; message?: string }>('/api/v1/create-order', payload);
     if (!r.waybill) throw new BadRequestException(r.message ?? 'Courier did not return a tracking number.');
@@ -121,6 +129,7 @@ export class BharatShipProvider {
   }
 
   async createReverseShipment(input: ShipmentInput): Promise<ShipmentResult> {
+    this.requireCourierCode();
     const payload = this.orderPayload(input);
     const r = await this.call<{ waybill?: string; order_id?: number; message?: string }>('/api/v1/create-reverse-order', payload);
     if (!r.waybill) throw new BadRequestException(r.message ?? 'Courier did not return a reverse tracking number.');

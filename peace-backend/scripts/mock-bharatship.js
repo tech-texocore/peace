@@ -20,6 +20,10 @@ const server = http.createServer((req, res) => {
       const payload = Buffer.from(JSON.stringify({ sub: '72', exp: Math.floor(Date.now() / 1000) + 30 * 86400 })).toString('base64');
       return send(res, 200, { token: `mock.${payload}.sig` });
     }
+    if (path === '/api/v1/create-order' || path === '/api/v1/create-reverse-order') {
+      const order = JSON.parse(body || '{}');
+      if (!order.courier_code) return send(res, 422, { status: false, message: 'Validation error', errors: { courier_code: ['Courier Code is required.'] } });
+    }
     if (path === '/api/v1/create-order') {
       if (FAIL === 'order') return send(res, 200, { status: false, message: 'Pincode not serviceable' });
       const waybill = String(++awbSeq);

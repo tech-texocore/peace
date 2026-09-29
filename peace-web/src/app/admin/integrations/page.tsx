@@ -27,13 +27,13 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    key: "bharatship", label: "BharatShip — Courier", testable: true, required: ["email", "password", "pickupAddressId"],
-    hint: "Book shipments, live tracking and return pickups from the order screen. Use your app.bharatship.com login. Empty = update shipping status manually.",
+    key: "bharatship", label: "BharatShip — Courier", testable: true, required: ["email", "password", "pickupAddressId", "courierCode"],
+    hint: "Book shipments, live tracking and return pickups from the order screen. Use your app.bharatship.com login. BharatShip needs a courier code on every booking — get your codes from BharatShip support. Empty = ship manually.",
     fields: [
       { k: "email", label: "Login email" },
       { k: "password", label: "Password", secret: true },
       { k: "pickupAddressId", label: "Pickup warehouse ID", placeholder: "From BharatShip → Warehouses" },
-      { k: "courierCode", label: "Preferred courier code", placeholder: "Optional" },
+      { k: "courierCode", label: "Courier code", placeholder: "From BharatShip support" },
       { k: "defaultWeightGrams", label: "Default parcel weight (grams)", placeholder: "500" },
       { k: "apiBase", label: "API URL", placeholder: "https://app.bharatship.com" },
     ],
