@@ -10,6 +10,7 @@ import { api } from "@/lib/api/client";
 import { env } from "@/lib/config/env";
 import { useCart, fetchQuote, type QuoteResult } from "@/lib/cart";
 import { cn } from "@/lib/utils/cn";
+import { qualifiesForFreeDelivery } from "@/lib/delivery";
 import {
   getCheckoutConfig, createOrder, verifyPayment, inr,
   type CheckoutConfig, type PaymentMethod,
@@ -108,7 +109,8 @@ export default function CheckoutPage() {
   }
 
   const method = config?.delivery.methods.find((m) => m.key === deliveryMethod) ?? config?.delivery.methods[0];
-  const freeShip = Boolean(quote?.freeShipping) || (quote != null && config != null && quote.total >= config.delivery.freeShippingThreshold);
+  const freeShip = quote != null && config != null && qualifiesForFreeDelivery(config.delivery, quote.total, quote.freeShipping);
+  const freeFrom = config && !config.delivery.freeForAll && !freeShip && config.delivery.freeShippingThreshold > 0 ? config.delivery.freeShippingThreshold - (quote?.total ?? 0) : 0;
   const shipFee = freeShip ? 0 : method?.fee ?? 0;
   const codFee = payment === "COD" ? config?.cod.fee ?? 0 : 0;
   const grandTotal = (quote?.total ?? 0) + shipFee + codFee;
@@ -186,16 +188,19 @@ export default function CheckoutPage() {
           <section className="rounded-2xl border border-line p-5">
             <StepHead n={2} icon={Truck} title="Delivery option" note="Choose how soon you’d like to receive it." />
             <div className="grid gap-2 sm:grid-cols-2">
-              {config?.delivery.methods.map((m) => {
-                const willBeFree = freeShip;
-                return (
-                  <button key={m.key} onClick={() => setDeliveryMethod(m.key)} className={cn("rounded-xl border p-3 text-left text-sm", deliveryMethod === m.key ? "border-accent bg-accent-soft/40" : "border-line hover:bg-accent-soft/30")}>
-                    <span className="font-medium">{m.label}</span>
-                    <span className="mt-0.5 block text-muted">{m.days} day{m.days === 1 ? "" : "s"} · {willBeFree ? "FREE" : inr(m.fee)}</span>
-                  </button>
-                );
-              })}
+              {config?.delivery.methods.map((m) => (
+                <button key={m.key} onClick={() => setDeliveryMethod(m.key)} className={cn("rounded-xl border p-3 text-left text-sm", deliveryMethod === m.key ? "border-accent bg-accent-soft/40" : "border-line hover:bg-accent-soft/30")}>
+                  <span className="font-medium">{m.label}</span>
+                  <span className="mt-0.5 block text-muted">
+                    {m.days} day{m.days === 1 ? "" : "s"} ·{" "}
+                    {freeShip || m.fee === 0 ? <span className="font-medium text-accent">FREE</span> : inr(m.fee)}
+                  </span>
+                </button>
+              ))}
             </div>
+            {freeFrom > 0 && (
+              <p className="mt-3 text-xs text-muted">Add <span className="font-medium text-ink">{inr(freeFrom)}</span> more to get free delivery.</p>
+            )}
           </section>
 
           {/* Payment */}
@@ -233,7 +238,7 @@ export default function CheckoutPage() {
           <div className="mt-4 space-y-1.5 border-t border-line pt-4 text-sm">
             <Row label="Subtotal" value={inr(quote?.subtotal ?? 0)} />
             {quote && quote.totalDiscount > 0 && <Row label="Discount" value={`− ${inr(quote.totalDiscount)}`} accent />}
-            <Row label="Delivery" value={shipFee === 0 ? "FREE" : inr(shipFee)} />
+            <Row label={method ? `Delivery · ${method.label}` : "Delivery"} value={shipFee === 0 ? "FREE" : inr(shipFee)} accent={shipFee === 0} />
             {codFee > 0 && <Row label="COD fee" value={inr(codFee)} />}
             <div className="flex justify-between border-t border-line pt-2 text-base font-semibold"><span>Total</span><span>{inr(grandTotal)}</span></div>
             <p className="pt-1 text-xs text-muted">Inclusive of all taxes</p>

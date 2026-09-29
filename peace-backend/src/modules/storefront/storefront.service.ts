@@ -40,7 +40,7 @@ export class StorefrontService {
     const storeId = await this.storeId(slug);
     const store = await this.prisma.store.findUnique({ where: { id: storeId }, select: { settings: true } });
     const s = resolveShipping(store?.settings);
-    return { freeShippingThreshold: s.freeShippingThreshold, codEnabled: s.codEnabled, methods: s.methods };
+    return { freeForAll: s.freeForAll, freeShippingThreshold: s.freeShippingThreshold, codEnabled: s.codEnabled, methods: s.methods };
   }
 
   async offers(slug: string) {

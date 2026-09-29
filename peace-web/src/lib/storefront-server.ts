@@ -1,4 +1,5 @@
 import { apiBase, env } from "@/lib/config/env";
+import type { DeliveryMethod, DeliveryRules } from "@/lib/delivery";
 
 const base = () => `${apiBase()}/storefront/${env.storeSlug}`;
 
@@ -82,7 +83,7 @@ export interface StoreTestimonial { quote: string; rating: number; name: string;
 export function getStoreTestimonials() {
   return fetchJson<StoreTestimonial[]>(`${base()}/testimonials`, []);
 }
-export interface DeliveryMethodInfo { key: string; label: string; fee: number; days: number }
+export type StoreShipping = DeliveryRules & { codEnabled: boolean; methods: DeliveryMethod[] };
 export function getStoreShipping() {
-  return fetchJson<{ freeShippingThreshold: number; codEnabled: boolean; methods: DeliveryMethodInfo[] }>(`${base()}/shipping-info`, { freeShippingThreshold: 0, codEnabled: true, methods: [] });
+  return fetchJson<StoreShipping>(`${base()}/shipping-info`, { freeForAll: false, freeShippingThreshold: 0, codEnabled: true, methods: [] });
 }

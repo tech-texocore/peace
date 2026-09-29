@@ -6,7 +6,8 @@ import { Loader2, Minus, Plus, Trash2, Tag, X, ShoppingBag, ArrowRight, Truck, H
 import { useCart, fetchQuote, type QuoteResult } from "@/lib/cart";
 import { useWishlist } from "@/lib/wishlist";
 import { TrustBadges } from "@/components/store/trust-badges";
-import { getStoreShipping } from "@/lib/storefront-server";
+import { getStoreShipping, type StoreShipping } from "@/lib/storefront-server";
+import { qualifiesForFreeDelivery } from "@/lib/delivery";
 import { env } from "@/lib/config/env";
 import { cn } from "@/lib/utils/cn";
 
@@ -22,10 +23,10 @@ export default function CartPage() {
   const [couponInput, setCouponInput] = useState("");
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [threshold, setThreshold] = useState(0);
+  const [shipping, setShipping] = useState<StoreShipping | null>(null);
 
   useEffect(() => { localStorage.setItem("peace_coupons", JSON.stringify(coupons)); }, [coupons]);
-  useEffect(() => { getStoreShipping().then((s) => setThreshold(s.freeShippingThreshold)); }, []);
+  useEffect(() => { getStoreShipping().then(setShipping); }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -67,7 +68,9 @@ export default function CartPage() {
   const total = quote?.total ?? 0;
   const hasStockIssue = lines.some((l) => l.outOfStock || l.exceedsStock);
   const savings = lines.reduce((s, l) => s + (l.mrp && l.mrp > l.unitPrice ? (l.mrp - l.unitPrice) * l.quantity : 0), 0) + (quote?.totalDiscount ?? 0);
-  const freeUnlocked = Boolean(quote?.freeShipping) || (threshold > 0 && total >= threshold);
+  const threshold = shipping && !shipping.freeForAll ? shipping.freeShippingThreshold : 0;
+  const freeUnlocked = shipping != null && qualifiesForFreeDelivery(shipping, total, quote?.freeShipping);
+  const cheapestFee = shipping?.methods.length ? Math.min(...shipping.methods.map((m) => m.fee)) : null;
   const remaining = Math.max(0, threshold - total);
   const pct = threshold > 0 ? Math.min(100, Math.round((total / threshold) * 100)) : 0;
 
@@ -174,7 +177,7 @@ export default function CartPage() {
             {quote?.appliedDiscounts.filter((d) => d.amount > 0).map((d) => (
               <div key={d.id} className="flex justify-between text-accent"><span className="truncate pr-2">{d.name}</span><span>−{inr(d.amount)}</span></div>
             ))}
-            <div className="flex justify-between"><span className="text-muted">Shipping</span><span className={cn(freeUnlocked && "font-medium text-accent")}>{freeUnlocked ? "Free" : "Calculated at checkout"}</span></div>
+            <div className="flex justify-between"><span className="text-muted">Shipping</span><span className={cn(freeUnlocked && "font-medium text-accent")}>{freeUnlocked ? "Free" : cheapestFee != null ? `From ${inr(cheapestFee)}` : "Calculated at checkout"}</span></div>
             <div className="flex justify-between border-t border-line pt-3 text-base font-semibold"><span>Total</span><span>{inr(total)}</span></div>
             {savings > 0 && <p className="rounded-lg bg-accent-soft/60 px-2 py-1.5 text-center text-xs font-medium text-accent">You’re saving {inr(savings)} on this order 🎉</p>}
             <p className="text-xs text-muted">Inclusive of taxes. Shipping shown at checkout.</p>

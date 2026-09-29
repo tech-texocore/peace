@@ -8,6 +8,28 @@ import { Field } from "@/components/ui/form-fields";
 import { cn } from "@/lib/utils/cn";
 
 type Settings = Record<string, any>;
+type DeliveryMethod = { key: string; label: string; fee: number; days: number; enabled: boolean };
+type Shipping = { freeForAll: boolean; freeShippingThreshold: number; codEnabled: boolean; codFee: number; methods: DeliveryMethod[] };
+type FreeMode = "none" | "above" | "all";
+
+const DEFAULT_SHIPPING: Shipping = {
+  freeForAll: false,
+  freeShippingThreshold: 999,
+  codEnabled: true,
+  codFee: 0,
+  methods: [
+    { key: "standard", label: "Standard Delivery", fee: 49, days: 5, enabled: true },
+    { key: "express", label: "Express Delivery", fee: 99, days: 2, enabled: true },
+  ],
+};
+
+const FREE_MODES: { mode: FreeMode; label: string }[] = [
+  { mode: "none", label: "No free delivery" },
+  { mode: "above", label: "Free above an amount" },
+  { mode: "all", label: "Free on every order" },
+];
+
+const toNumber = (v: string) => Math.max(0, Number(v.replace(/[^\d]/g, "")) || 0);
 
 export default function SettingsPage() {
   const { storeId, hasPermission } = useAdminAuth();
@@ -37,11 +59,28 @@ export default function SettingsPage() {
 
   async function save() {
     if (!s) return;
+    if (!shipping.methods.some((m) => m.enabled)) return;
     setSaving(true);
     await api.put(`/stores/settings${q}`, { settings: s }, { auth: true });
     setSaving(false);
     setStatus("Saved");
   }
+
+  const saved = s?.shipping as Partial<Shipping> | undefined;
+  const shipping: Shipping = {
+    ...DEFAULT_SHIPPING,
+    ...saved,
+    methods: (saved?.methods?.length ? saved.methods : DEFAULT_SHIPPING.methods).map((m) => ({ ...m, enabled: m.enabled !== false })),
+  };
+  const freeMode: FreeMode = shipping.freeForAll ? "all" : shipping.freeShippingThreshold > 0 ? "above" : "none";
+  const setShipping = (patch: Partial<Shipping>) => set(["shipping"], { ...shipping, ...patch });
+  const setMethod = (i: number, patch: Partial<DeliveryMethod>) =>
+    setShipping({ methods: shipping.methods.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
+  const setFreeMode = (mode: FreeMode) =>
+    setShipping({
+      freeForAll: mode === "all",
+      freeShippingThreshold: mode === "above" ? shipping.freeShippingThreshold || DEFAULT_SHIPPING.freeShippingThreshold : 0,
+    });
 
   if (!s) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted" /></div>;
 
@@ -76,6 +115,52 @@ export default function SettingsPage() {
 
         <div className="space-y-4">
           <section className="rounded-2xl border border-line bg-card p-5">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest text-muted">Shipping & delivery</h2>
+            <p className="mb-4 text-xs text-muted">What customers pay for delivery at checkout. Changes apply as soon as you save.</p>
+
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted">Delivery options</span>
+            <div className="space-y-2">
+              {shipping.methods.map((m, i) => (
+                <div key={m.key} className={cn("grid grid-cols-[auto_1fr_6rem_5rem] items-center gap-3", !m.enabled && "opacity-60")}>
+                  <input type="checkbox" checked={m.enabled} onChange={(e) => setMethod(i, { enabled: e.target.checked })} aria-label={`Offer ${m.label}`} className="h-4 w-4 accent-[var(--accent)]" />
+                  <Input value={m.label} onChange={(v) => setMethod(i, { label: v })} placeholder="Name" />
+                  <Input value={String(m.fee)} onChange={(v) => setMethod(i, { fee: toNumber(v) })} prefix="₹" />
+                  <Input value={String(m.days)} onChange={(v) => setMethod(i, { days: Math.max(1, toNumber(v)) })} suffix="days" />
+                </div>
+              ))}
+            </div>
+            {!shipping.methods.some((m) => m.enabled) && <p className="mt-2 text-xs text-danger">Keep at least one delivery option on.</p>}
+
+            <span className="mb-1.5 mt-5 block text-xs font-semibold uppercase tracking-wide text-muted">Free delivery</span>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {FREE_MODES.map((f) => (
+                <button key={f.mode} type="button" onClick={() => setFreeMode(f.mode)} className={cn("rounded-xl border px-3 py-2 text-left text-sm", freeMode === f.mode ? "border-accent bg-accent-soft/40 font-medium" : "border-line hover:bg-accent-soft/30")}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {freeMode === "above" && (
+              <div className="mt-3 max-w-[14rem]">
+                <Field label="Free when order is at least (₹)" inputMode="numeric" value={String(shipping.freeShippingThreshold)} onChange={(v) => setShipping({ freeShippingThreshold: Math.max(1, toNumber(v)) })} />
+              </div>
+            )}
+            <p className="mt-2 text-xs text-muted">Free-shipping coupons (Marketing → Discounts) also make delivery free.</p>
+
+            <span className="mb-1.5 mt-5 block text-xs font-semibold uppercase tracking-wide text-muted">Cash on Delivery</span>
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={shipping.codEnabled} onChange={(e) => setShipping({ codEnabled: e.target.checked })} className="h-4 w-4 accent-[var(--accent)]" />
+                Offer Cash on Delivery
+              </label>
+              {shipping.codEnabled && (
+                <div className="w-40"><Input value={String(shipping.codFee)} onChange={(v) => setShipping({ codFee: toNumber(v) })} prefix="₹" suffix="extra" /></div>
+              )}
+            </div>
+
+            <p className="mt-5 rounded-lg bg-line/40 px-3 py-2 text-xs text-muted">If you change free delivery, also update texts like “Free shipping over ₹999” in <span className="font-medium text-ink">Site Config</span> (announcement bar and scrolling strip).</p>
+          </section>
+
+          <section className="rounded-2xl border border-line bg-card p-5">
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted">Contact & social</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Support email" type="email" value={s.contact?.email ?? ""} onChange={(v) => set(["contact", "email"], v)} placeholder="support@peace.com" />
@@ -104,5 +189,15 @@ export default function SettingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function Input({ value, onChange, placeholder, prefix, suffix }: { value: string; onChange: (v: string) => void; placeholder?: string; prefix?: string; suffix?: string }) {
+  return (
+    <label className="flex h-10 items-center gap-1.5 rounded-lg border border-line bg-canvas px-3 text-sm focus-within:border-accent">
+      {prefix && <span className="text-muted">{prefix}</span>}
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode={prefix || suffix ? "numeric" : undefined} className="w-full min-w-0 bg-transparent outline-none" />
+      {suffix && <span className="shrink-0 text-xs text-muted">{suffix}</span>}
+    </label>
   );
 }

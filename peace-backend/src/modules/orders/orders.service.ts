@@ -7,7 +7,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
 import { ShippingService } from '../../infra/shipping/shipping.service';
 import type { ShipmentInput } from '../../infra/shipping/shipping.types';
-import { resolveShipping } from './checkout.config';
+import { qualifiesForFreeDelivery, resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
 import { MetaCapiService, type MetaContext } from '../meta/meta-capi.service';
 
@@ -160,7 +160,7 @@ export class OrdersService {
     const store = await this.prisma.store.findFirst({ select: { settings: true } });
     const shipping = resolveShipping(store?.settings);
     return {
-      delivery: { methods: shipping.methods, freeShippingThreshold: shipping.freeShippingThreshold },
+      delivery: { methods: shipping.methods, freeForAll: shipping.freeForAll, freeShippingThreshold: shipping.freeShippingThreshold },
       cod: { enabled: shipping.codEnabled, fee: shipping.codFee },
       payment: this.payments.config(),
     };
@@ -186,7 +186,7 @@ export class OrdersService {
     const shipping = resolveShipping(store?.settings);
     const method = shipping.methods.find((m) => m.key === dto.deliveryMethod) ?? shipping.methods[0];
 
-    const freeShipping = quote.freeShipping || quote.total >= shipping.freeShippingThreshold;
+    const freeShipping = qualifiesForFreeDelivery(shipping, quote.total, quote.freeShipping);
     let shippingFee = freeShipping ? 0 : method.fee;
     if (dto.paymentMethod === 'COD') {
       if (!shipping.codEnabled) throw new BadRequestException('Cash on Delivery is not available');

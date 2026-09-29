@@ -20,9 +20,11 @@ export default async function ShippingPage() {
           body: ship.methods.length ? (
             <ul className="list-disc space-y-1 pl-5">
               {ship.methods.map((m) => (
-                <li key={m.key}><span className="font-medium text-ink">{m.label}</span> — {m.days} business day{m.days === 1 ? "" : "s"}, {m.fee === 0 ? "free" : inr(m.fee)}</li>
+                <li key={m.key}><span className="font-medium text-ink">{m.label}</span> — {m.days} business day{m.days === 1 ? "" : "s"}, {ship.freeForAll || m.fee === 0 ? "free" : inr(m.fee)}</li>
               ))}
-              {ship.freeShippingThreshold > 0 && <li><span className="font-medium text-ink">Free shipping</span> on all orders over {inr(ship.freeShippingThreshold)}.</li>}
+              {ship.freeForAll
+                ? <li><span className="font-medium text-ink">Free shipping</span> on every order.</li>
+                : ship.freeShippingThreshold > 0 && <li><span className="font-medium text-ink">Free shipping</span> on all orders of {inr(ship.freeShippingThreshold)} or more.</li>}
             </ul>
           ) : <p>Delivery charges are shown at checkout based on your address.</p>,
         },

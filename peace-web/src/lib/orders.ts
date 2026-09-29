@@ -1,11 +1,12 @@
 import { api } from "@/lib/api/client";
+import type { DeliveryMethod, DeliveryRules } from "@/lib/delivery";
 
 export type OrderStatus = "PENDING" | "CONFIRMED" | "PACKED" | "SHIPPED" | "DELIVERED" | "CANCELLED" | "RETURNED";
 export type PaymentMethod = "COD" | "RAZORPAY";
 
-export interface DeliveryMethod { key: string; label: string; fee: number; days: number }
+export type { DeliveryMethod };
 export interface CheckoutConfig {
-  delivery: { methods: DeliveryMethod[]; freeShippingThreshold: number };
+  delivery: DeliveryRules & { methods: DeliveryMethod[] };
   cod: { enabled: boolean; fee: number };
   payment: { razorpay: { enabled: boolean; keyId: string | null } };
 }
