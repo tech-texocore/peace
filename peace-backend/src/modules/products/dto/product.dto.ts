@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray, IsBoolean, IsInt, IsNumber, IsObject, IsOptional, IsString, IsIn,
-  Min, MaxLength, MinLength, ValidateNested,
+  Max, Min, MaxLength, MinLength, ValidateNested,
 } from 'class-validator';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -69,8 +69,11 @@ export class ProductBase {
 
   @IsOptional() @IsString() @MaxLength(200) metaTitle?: string;
   @IsOptional() @IsString() @MaxLength(320) metaDescription?: string;
-  @IsOptional() @IsBoolean() returnable?: boolean;
-  @IsOptional() @IsInt() @Min(0) returnWindowDays?: number;
+  // null = inherit the seller's policy.
+  @IsOptional() @IsBoolean() returnable?: boolean | null;
+  @IsOptional() @IsInt() @Min(1) @Max(365) returnWindowDays?: number | null;
+  @IsOptional() @IsBoolean() exchangeable?: boolean | null;
+  @IsOptional() @IsInt() @Min(1) @Max(365) exchangeWindowDays?: number | null;
   @IsOptional() @IsInt() @Min(1) minOrderQty?: number;
   @IsOptional() @IsInt() @Min(1) maxOrderQty?: number;
 

@@ -80,7 +80,7 @@ export function ProductForm({ productId }: { productId?: string }) {
     variants: { [DEFAULT_KEY]: emptyVariant() } as Record<string, VariantRow>,
     specifications: {} as Record<string, string>,
     tags: "", metaTitle: "", metaDescription: "",
-    returnable: "" as "" | "yes" | "no", returnWindowDays: "", minOrderQty: "", maxOrderQty: "",
+    returnable: "" as "" | "yes" | "no", returnWindowDays: "", exchangeable: "" as "" | "yes" | "no", exchangeWindowDays: "", minOrderQty: "", maxOrderQty: "",
     collectionIds: [] as string[],
     relatedProductIds: [] as string[],
     media: [] as { url: string; type: string; alt?: string; colours?: string[] }[],
@@ -153,6 +153,7 @@ export function ProductForm({ productId }: { productId?: string }) {
       const specs: Record<string, string> = {};
       ((p.specifications as { key: string; value: string }[]) ?? []).forEach((s) => { specs[s.key] = s.value; });
       const rr = p.returnable as boolean | null;
+      const ex = p.exchangeable as boolean | null;
       const variantColour = new Map(pv.map((v) => [String(v.id ?? ""), ((v.attributes as Record<string, string> | null) ?? {}).colour]));
       setF((prev) => ({
         ...prev,
@@ -164,6 +165,7 @@ export function ProductForm({ productId }: { productId?: string }) {
         axisValues, variants: Object.keys(variants).length ? variants : { [DEFAULT_KEY]: emptyVariant() }, specifications: specs,
         tags: ((p.tags as string[]) ?? []).join(", "), metaTitle: String(p.metaTitle ?? ""), metaDescription: String(p.metaDescription ?? ""),
         returnable: rr === true ? "yes" : rr === false ? "no" : "", returnWindowDays: p.returnWindowDays != null ? String(p.returnWindowDays) : "",
+        exchangeable: ex === true ? "yes" : ex === false ? "no" : "", exchangeWindowDays: p.exchangeWindowDays != null ? String(p.exchangeWindowDays) : "",
         minOrderQty: p.minOrderQty != null ? String(p.minOrderQty) : "", maxOrderQty: p.maxOrderQty != null ? String(p.maxOrderQty) : "",
         collectionIds: ((p.collectionLinks as { collection: { id: string } }[]) ?? []).map((l) => l.collection.id),
         relatedProductIds: (p.relatedProductIds as string[]) ?? [],
@@ -244,7 +246,8 @@ export function ProductForm({ productId }: { productId?: string }) {
       tags: f.tags.split(",").map((t) => t.trim()).filter(Boolean),
       isCustomizable: f.isCustomizable, customizationFields: f.isCustomizable ? f.customizationFields.filter((c) => c.label) : [],
       metaTitle: f.metaTitle || undefined, metaDescription: f.metaDescription || undefined,
-      returnable: f.returnable === "" ? undefined : f.returnable === "yes", returnWindowDays: f.returnWindowDays ? Number(f.returnWindowDays) : undefined,
+      returnable: f.returnable === "" ? null : f.returnable === "yes", returnWindowDays: f.returnable === "yes" && f.returnWindowDays ? Number(f.returnWindowDays) : null,
+      exchangeable: f.exchangeable === "" ? null : f.exchangeable === "yes", exchangeWindowDays: f.exchangeable === "yes" && f.exchangeWindowDays ? Number(f.exchangeWindowDays) : null,
       minOrderQty: f.minOrderQty ? Number(f.minOrderQty) : undefined, maxOrderQty: f.maxOrderQty ? Number(f.maxOrderQty) : undefined,
       collectionIds: f.collectionIds, relatedProductIds: f.relatedProductIds,
       media: f.media.map((m) => ({ url: m.url, type: m.type, alt: m.alt, colours: m.colours ?? [] })),
@@ -523,7 +526,13 @@ export function ProductForm({ productId }: { productId?: string }) {
                 <option value="yes">Returnable</option>
                 <option value="no">Not returnable</option>
               </SelectField>
-              {f.returnable === "yes" && <Field label="Return window (days)" value={f.returnWindowDays} onChange={(v) => set({ returnWindowDays: v })} />}
+              {f.returnable === "yes" && <Field label="Return window (days) — empty = seller's" value={f.returnWindowDays} onChange={(v) => set({ returnWindowDays: v.replace(/\D/g, "") })} />}
+              <SelectField label="Exchange" value={f.exchangeable} onChange={(v) => set({ exchangeable: v as "" | "yes" | "no" })}>
+                <option value="">Inherit from seller</option>
+                <option value="yes">Exchangeable</option>
+                <option value="no">No exchange</option>
+              </SelectField>
+              {f.exchangeable === "yes" && <Field label="Exchange window (days) — empty = seller's" value={f.exchangeWindowDays} onChange={(v) => set({ exchangeWindowDays: v.replace(/\D/g, "") })} />}
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Min qty" value={f.minOrderQty} onChange={(v) => set({ minOrderQty: v })} />
                 <Field label="Max qty" value={f.maxOrderQty} onChange={(v) => set({ maxOrderQty: v })} />

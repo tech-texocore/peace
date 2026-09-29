@@ -207,7 +207,7 @@ export default function SellersPage() {
       returnWindowDays: form.returnWindowDays,
       dispatchDays: form.dispatchDays,
       codAvailable: form.codAvailable,
-      ...(form.replacementDays !== "" ? { replacementDays: Number(form.replacementDays) } : {}),
+      replacementDays: form.replacementDays === "" ? null : Number(form.replacementDays),
     };
     try {
       if (editingId) await api.patch(`/sellers/${editingId}?${q}`, payload, { auth: true });
@@ -304,12 +304,12 @@ export default function SellersPage() {
             </div>
           </Section>
 
-          <Section title="Policies" hint="defaults for this seller; a product can override the return rule">
+          <Section title="Policies" hint="defaults for this seller; each product can override return and exchange">
             <div className="grid gap-4 lg:grid-cols-2">
               <Toggle label="Returns accepted" hint="Allow customers to return items" on={form.returnable} onChange={(v) => set({ returnable: v })} />
               <Toggle label="Cash on delivery" hint="Offer COD for this seller" on={form.codAvailable} onChange={(v) => set({ codAvailable: v })} />
               <NumberField label="Return window" value={form.returnWindowDays} onChange={(v) => set({ returnWindowDays: Number(v) })} min={0} max={365} suffix="days" />
-              <NumberField label="Replacement window" value={form.replacementDays} onChange={(v) => set({ replacementDays: v })} min={0} max={365} suffix="days" />
+              <NumberField label="Exchange window (empty = no exchange)" value={form.replacementDays} onChange={(v) => set({ replacementDays: v })} min={0} max={365} suffix="days" />
               <NumberField label="Dispatch time" value={form.dispatchDays} onChange={(v) => set({ dispatchDays: Number(v) })} min={0} max={60} suffix="days" />
               <Field label="Warranty info" placeholder="e.g. 6-month manufacturer warranty" value={form.warrantyInfo} onChange={(v) => set({ warrantyInfo: v })} />
             </div>

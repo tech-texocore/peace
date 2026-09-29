@@ -20,6 +20,8 @@ export interface ShippingAddress {
   recipientName: string; recipientPhone: string; line1: string; line2?: string | null; landmark?: string | null;
   city: string; district?: string | null; state: string; postalCode: string; country: string;
 }
+export interface AfterSalesOption { allowed: boolean; until: string | null; reason: string | null }
+
 export interface Order {
   id: string; orderNumber: string; status: OrderStatus;
   subtotal: number; discount: number; taxAmount: number; shippingFee: number; total: number; currency: string;
@@ -27,6 +29,7 @@ export interface Order {
   deliveryMethod: string; estimatedDelivery: string | null; shippingAddress: ShippingAddress;
   notes: string | null; createdAt: string; items: OrderItem[]; events?: OrderEvent[];
   awb?: string | null; courierName?: string | null; shipmentProvider?: "bharatship" | "manual" | null; courierStatus?: string | null;
+  afterSales?: { return: AfterSalesOption; exchange: AfterSalesOption } | null;
   returnRequest?: {
     id: string; type: "RETURN" | "EXCHANGE"; reason: string; status: ReturnStatus;
     resolution: string | null; refundId: string | null; refundAmount: number | null;

@@ -5,6 +5,7 @@ import { PricingService, type QuoteInput } from '../discounts/pricing.service';
 import { ReviewsService } from '../reviews/reviews.service';
 import { SearchService } from '../search/search.service';
 import { resolveShipping } from '../orders/checkout.config';
+import { productWindows } from '../orders/after-sales.policy';
 
 interface ProductQuery {
   category?: string; collection?: string; search?: string; sort?: string; page?: number; limit?: number;
@@ -249,7 +250,7 @@ export class StorefrontService {
       include: {
         brand: { select: { name: true, slug: true } },
         category: { select: { name: true, slug: true } },
-        seller: { select: { name: true, returnable: true, returnWindowDays: true, codAvailable: true, warrantyInfo: true, dispatchDays: true } },
+        seller: { select: { name: true, returnable: true, returnWindowDays: true, replacementDays: true, codAvailable: true, warrantyInfo: true, dispatchDays: true } },
         variants: { orderBy: { position: 'asc' } },
         media: { orderBy: { position: 'asc' } },
       },
@@ -274,10 +275,9 @@ export class StorefrontService {
       : p.categoryId ? await this.cardList(storeId, { categoryId: p.categoryId, id: { not: p.id } }, 8) : [];
 
     const rating = await this.reviews.summary(p.id);
-    // Product-level return policy overrides the seller default for what the PDP shows.
-    const seller = p.seller
-      ? { ...p.seller, returnable: p.returnable ?? p.seller.returnable, returnWindowDays: p.returnWindowDays ?? p.seller.returnWindowDays }
-      : p.seller;
+    // What the product page promises uses the same rule that accepts return / exchange requests.
+    const windows = productWindows(p);
+    const seller = { ...p.seller, returnable: windows.RETURN != null, returnWindowDays: windows.RETURN ?? 0, exchangeWindowDays: windows.EXCHANGE };
     return { ...p, seller, priceFrom: prices.length ? Math.min(...prices) : null, inStock: p.variants.some((v) => v.stock > 0), sizeGuide, related, ratingAvg: rating.average, ratingCount: rating.count };
   }
 

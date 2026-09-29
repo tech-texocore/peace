@@ -26,7 +26,7 @@ export interface ProductDetail {
   id: string; slug: string; title: string; description: string | null;
   brand: { name: string; slug: string } | null;
   category: { name: string; slug: string } | null;
-  seller: { name: string; returnable: boolean; returnWindowDays: number; codAvailable: boolean; warrantyInfo: string | null; dispatchDays: number };
+  seller: { name: string; returnable: boolean; returnWindowDays: number; exchangeWindowDays: number | null; codAvailable: boolean; warrantyInfo: string | null; dispatchDays: number };
   variants: ProductVariant[];
   media: { id: string; type: string; url: string; alt: string | null; variantId: string | null; colours: string[] }[];
   specifications: { key: string; label: string; value: string }[] | null;

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ShoppingBag, Truck, RotateCcw, ShieldCheck, Store, Ruler, X, Minus, Plus, Tag, Share2, Copy, Expand, ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
+import { Check, ShoppingBag, Truck, RotateCcw, Repeat, ShieldCheck, Store, Ruler, X, Minus, Plus, Tag, Share2, Copy, Expand, ChevronLeft, ChevronRight, Wand2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { api } from "@/lib/api/client";
 import { firebaseAuth } from "@/lib/firebase/client";
@@ -296,6 +296,8 @@ export function ProductDetailView({ product: p, offers = [] }: { product: Produc
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <span className="flex items-center gap-2 text-muted"><Truck className="h-4 w-4 text-accent" /> Ships in {p.seller.dispatchDays}d</span>
             {p.seller.returnable && <span className="flex items-center gap-2 text-muted"><RotateCcw className="h-4 w-4 text-accent" /> {p.seller.returnWindowDays}-day return</span>}
+            {p.seller.exchangeWindowDays != null && <span className="flex items-center gap-2 text-muted"><Repeat className="h-4 w-4 text-accent" /> {p.seller.exchangeWindowDays}-day exchange</span>}
+            {!p.seller.returnable && p.seller.exchangeWindowDays == null && <span className="flex items-center gap-2 text-muted"><RotateCcw className="h-4 w-4 text-accent" /> No returns</span>}
             {p.seller.codAvailable && <span className="flex items-center gap-2 text-muted"><ShieldCheck className="h-4 w-4 text-accent" /> COD available</span>}
             <span className="flex items-center gap-2 text-muted"><Store className="h-4 w-4 text-accent" /> {p.seller.name}</span>
           </div>

@@ -391,9 +391,11 @@ model Product {
   metaTitle       String?
   metaDescription String?
 
-  // null = inherit the seller's default return policy.
-  returnable       Boolean?
-  returnWindowDays Int?
+  // null = inherit the seller's default return / exchange policy.
+  returnable         Boolean?
+  returnWindowDays   Int?
+  exchangeable       Boolean?
+  exchangeWindowDays Int?
 
   minOrderQty Int?
   maxOrderQty Int?

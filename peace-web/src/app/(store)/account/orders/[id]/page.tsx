@@ -11,6 +11,7 @@ import { CustomizationSummary } from "@/components/ui/customization-summary";
 import { trackMeta } from "@/lib/meta-pixel";
 
 const CANCELLABLE = ["PENDING", "CONFIRMED", "PACKED"];
+const shortDate = (d: string | null) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
 const returnSteps = (rr: NonNullable<Order["returnRequest"]>) => [
   rr.type === "EXCHANGE" ? "Exchange requested" : "Return requested",
   rr.reverseAwb ? `Approved — courier pickup booked (AWB ${rr.reverseAwb})` : "Approved — we'll contact you to collect the item",
@@ -77,6 +78,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   if (notFound) return <div className="rounded-2xl border border-dashed border-line py-16 text-center text-sm text-muted">Order not found.</div>;
   if (!order) return <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted" /></div>;
 
+  const allowedTypes = (["RETURN", "EXCHANGE"] as const).filter((t) => order.afterSales?.[t === "RETURN" ? "return" : "exchange"].allowed);
+  const canRaise = allowedTypes.length > 0;
+  const notEligible = order.afterSales && !canRaise ? order.afterSales.return.reason ?? order.afterSales.exchange.reason : null;
+
   const addr = order.shippingAddress;
 
   return (
@@ -96,11 +101,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             Placed {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
             {order.estimatedDelivery && order.status !== "CANCELLED" && ` · Est. delivery ${new Date(order.estimatedDelivery).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`}
           </p>
+          {canRaise && (
+            <p className="mt-1 text-xs text-muted">
+              {allowedTypes.map((t) => `${t === "RETURN" ? "Return" : "Exchange"} by ${shortDate(order.afterSales![t === "RETURN" ? "return" : "exchange"].until)}`).join(" · ")}
+            </p>
+          )}
+          {notEligible && <p className="mt-1 text-xs text-muted">Not eligible for return or exchange — {notEligible}.</p>}
         </div>
         <div className="flex gap-2">
           <Link href={`/account/orders/${order.id}/invoice`} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft"><FileText className="h-4 w-4" /> Invoice</Link>
-          {order.status === "DELIVERED" && (!order.returnRequest || order.returnRequest.status === "REJECTED") && (
-            <button onClick={() => { setReturnOpen(true); setReturnDone(false); setReturnReason(""); setReturnErr(""); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft"><RotateCcw className="h-4 w-4" /> Return / Exchange</button>
+          {canRaise && (
+            <button onClick={() => { setReturnOpen(true); setReturnDone(false); setReturnReason(""); setReturnErr(""); setReturnType(allowedTypes[0]); }} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-accent-soft"><RotateCcw className="h-4 w-4" /> {allowedTypes.length === 2 ? "Return / Exchange" : allowedTypes[0] === "RETURN" ? "Return" : "Exchange"}</button>
           )}
           {CANCELLABLE.includes(order.status) && (
             <button onClick={doCancel} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-sm font-medium text-danger hover:bg-danger/10 disabled:opacity-50"><XCircle className="h-4 w-4" /> Cancel</button>
@@ -241,8 +252,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             ) : (
               <div className="space-y-3">
                 <div className="flex gap-2">
-                  {(["RETURN", "EXCHANGE"] as const).map((t) => (
-                    <button key={t} onClick={() => setReturnType(t)} className={`flex-1 rounded-lg border px-3 py-2 text-sm ${returnType === t ? "border-accent bg-accent-soft/40 font-medium" : "border-line hover:bg-accent-soft/30"}`}>{t === "RETURN" ? "Return" : "Exchange"}</button>
+                  {allowedTypes.map((t) => (
+                    <button key={t} onClick={() => setReturnType(t)} className={`flex-1 rounded-lg border px-3 py-2 text-left text-sm ${returnType === t ? "border-accent bg-accent-soft/40 font-medium" : "border-line hover:bg-accent-soft/30"}`}>
+                      {t === "RETURN" ? "Return" : "Exchange"}
+                      <span className="block text-xs font-normal text-muted">{t === "RETURN" ? "Refund to original payment" : "Different size / colour"} · by {shortDate(order.afterSales![t === "RETURN" ? "return" : "exchange"].until)}</span>
+                    </button>
                   ))}
                 </div>
                 <textarea value={returnReason} onChange={(e) => setReturnReason(e.target.value)} rows={3} placeholder="Reason (e.g. size doesn’t fit, defective)" className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent" />

@@ -57,7 +57,8 @@ export class UpdateSellerDto {
 
   @IsOptional() @IsBoolean() returnable?: boolean;
   @IsOptional() @IsInt() @Min(0) @Max(365) returnWindowDays?: number;
-  @IsOptional() @IsInt() @Min(0) @Max(365) replacementDays?: number;
+  // null / 0 = no exchanges.
+  @IsOptional() @IsInt() @Min(0) @Max(365) replacementDays?: number | null;
   @IsOptional() @IsInt() @Min(0) @Max(60) dispatchDays?: number;
   @IsOptional() @IsBoolean() codAvailable?: boolean;
   @IsOptional() @IsString() @MaxLength(500) warrantyInfo?: string;

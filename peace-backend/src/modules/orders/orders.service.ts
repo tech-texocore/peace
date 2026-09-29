@@ -7,6 +7,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
 import { ShippingService } from '../../infra/shipping/shipping.service';
 import type { ShipmentInput, TrackingResult } from '../../infra/shipping/shipping.types';
+import { afterSalesOption, POLICY_SELECT, type AfterSalesType } from './after-sales.policy';
 import { qualifiesForFreeDelivery, resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
 import { MetaCapiService, type MetaContext } from '../meta/meta-capi.service';
@@ -413,7 +414,16 @@ export class OrdersService {
       include: { items: true, events: { orderBy: { createdAt: 'asc' } }, returns: { orderBy: { createdAt: 'desc' }, take: 1 } },
     });
     if (!order) throw new NotFoundException('Order not found');
-    return { ...this.serialize(order), events: this.customerTimeline(order) };
+    return { ...this.serialize(order), events: this.customerTimeline(order), afterSales: await this.afterSalesFor(order) };
+  }
+
+  // What the customer may raise on this order right now — the same rules requestReturn enforces.
+  private async afterSalesFor(order: { id: string; status: OrderStatus; events: { status: OrderStatus; createdAt: Date }[]; returns: { status: ReturnStatus }[] }) {
+    if (order.status !== 'DELIVERED' || order.returns.some((r) => r.status !== 'REJECTED')) return null;
+    const items = await this.prisma.orderItem.findMany({ where: { orderId: order.id }, select: { product: { select: POLICY_SELECT } } });
+    const deliveredAt = [...order.events].reverse().find((e) => e.status === 'DELIVERED')?.createdAt ?? null;
+    const products = items.map((i) => i.product);
+    return { return: afterSalesOption('RETURN', products, deliveredAt), exchange: afterSalesOption('EXCHANGE', products, deliveredAt) };
   }
 
   // Customers see one plain-language step per status; admin notes and system details stay internal.
@@ -511,34 +521,23 @@ export class OrdersService {
   }
 
   // ---------------- Returns / RMA ----------------
-  async requestReturn(uid: string, orderId: string, type: 'RETURN' | 'EXCHANGE', reason: string) {
+  async requestReturn(uid: string, orderId: string, type: AfterSalesType, reason: string) {
     const user = await this.user(uid);
     const order = await this.prisma.order.findFirst({
       where: { id: orderId, userId: user.id },
       select: {
         id: true, storeId: true, status: true, orderNumber: true,
-        items: { select: { quantity: true, product: { select: { returnable: true, returnWindowDays: true, seller: { select: { returnable: true, returnWindowDays: true } } } } } },
+        items: { select: { product: { select: POLICY_SELECT } } },
         events: { where: { status: 'DELIVERED' }, orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+        returns: { where: { status: { not: 'REJECTED' } }, select: { id: true }, take: 1 },
       },
     });
     if (!order) throw new NotFoundException('Order not found');
-    if (order.status !== 'DELIVERED') throw new BadRequestException('Returns can be raised only after delivery');
+    if (order.status !== 'DELIVERED') throw new BadRequestException('Returns and exchanges can be raised only after delivery');
+    if (order.returns.length) throw new BadRequestException('A return or exchange has already been raised for this order');
 
-    // Per-item policy: product override, falling back to its seller's default.
-    const policies = order.items.map((it) => ({
-      returnable: it.product?.returnable ?? it.product?.seller?.returnable ?? true,
-      windowDays: it.product?.returnWindowDays ?? it.product?.seller?.returnWindowDays ?? 7,
-    }));
-    const returnable = policies.filter((p) => p.returnable);
-    if (returnable.length === 0) throw new BadRequestException('The item(s) in this order are not eligible for return.');
-    const windowDays = Math.max(...returnable.map((p) => p.windowDays));
-    const deliveredAt = order.events[0]?.createdAt;
-    if (deliveredAt && Date.now() > deliveredAt.getTime() + windowDays * 86_400_000) {
-      throw new BadRequestException(`The ${windowDays}-day return window for this order has passed.`);
-    }
-
-    const existing = await this.prisma.returnRequest.findFirst({ where: { orderId, status: { in: ['REQUESTED', 'APPROVED', 'PICKED_UP'] } } });
-    if (existing) throw new BadRequestException('A return is already in progress for this order');
+    const option = afterSalesOption(type, order.items.map((i) => i.product), order.events[0]?.createdAt ?? null);
+    if (!option.allowed) throw new BadRequestException(option.reason ?? 'This order is not eligible');
 
     const rr = await this.prisma.returnRequest.create({ data: { storeId: order.storeId, orderId, userId: user.id, type, reason } });
     void this.notifyOrder(order.id, `Return requested for ${order.orderNumber}`, `We’ve received your ${type.toLowerCase()} request and will review it shortly.`);

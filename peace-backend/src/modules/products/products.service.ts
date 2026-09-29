@@ -145,6 +145,8 @@ export class ProductsService {
       metaDescription: dto.metaDescription,
       returnable: dto.returnable,
       returnWindowDays: dto.returnWindowDays,
+      exchangeable: dto.exchangeable,
+      exchangeWindowDays: dto.exchangeWindowDays,
       minOrderQty: dto.minOrderQty,
       maxOrderQty: dto.maxOrderQty,
     };
