@@ -22,11 +22,7 @@ export class LocalStorageProvider implements StorageProvider {
     return `${base.replace(/\/$/, '')}/${key}`;
   }
 
-  async put(
-    key: string,
-    body: Buffer,
-    _contentType: string,
-  ): Promise<StoredObject> {
+  async put(key: string, body: Buffer): Promise<StoredObject> {
     const filePath = join(this.dir, key);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, body);

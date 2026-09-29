@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AuthProvider } from "@/context/auth-context";
 import { SiteConfigProvider } from "@/context/site-config-context";
 import { CartProvider } from "@/lib/cart";
@@ -5,17 +6,23 @@ import { WishlistProvider } from "@/lib/wishlist";
 import { AnnouncementBar } from "@/components/home/announcement-bar";
 import { Header } from "@/components/layout/header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { getSiteConfig } from "@/lib/site-config-server";
+import { getSiteConfig, getTrackingConfig } from "@/lib/site-config-server";
+import { MetaPixel } from "@/components/store/meta-pixel";
 import { DEFAULT_THEME } from "@/lib/site-config";
 
 // Only allow hex / rgb(a) values into the injected stylesheet.
 const safeColor = (v: string | undefined, fallback: string) =>
   /^(#[0-9a-fA-F]{3,8}|rgba?\([\d.,\s%]+\))$/.test(v?.trim() ?? "") ? (v as string).trim() : fallback;
 
+export async function generateMetadata(): Promise<Metadata> {
+  const { metaDomainVerification } = await getTrackingConfig();
+  return metaDomainVerification ? { other: { "facebook-domain-verification": metaDomainVerification } } : {};
+}
+
 export default async function StoreLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const config = await getSiteConfig();
+  const [config, tracking] = await Promise.all([getSiteConfig(), getTrackingConfig()]);
   const showAnnouncement = config.visibility?.announcement !== false;
 
   const c = config.theme?.colors ?? DEFAULT_THEME.colors;
@@ -28,6 +35,7 @@ export default async function StoreLayout({
         <CartProvider>
           <WishlistProvider>
             <style dangerouslySetInnerHTML={{ __html: themeCss }} />
+            {tracking.metaPixelId && <MetaPixel pixelId={tracking.metaPixelId} />}
             {showAnnouncement && <AnnouncementBar config={config} />}
             <Header config={config} />
             <main className="flex-1">{children}</main>

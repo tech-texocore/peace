@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
@@ -12,7 +13,19 @@ export class CampaignsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly config: ConfigService,
   ) {}
+
+  // Absolute, UTM-tagged link per channel; in-app keeps a site-relative path.
+  private link(c: { name: string; targetUrl: string | null }, channel: 'email' | 'sms' | 'whatsapp' | 'in_app') {
+    if (!c.targetUrl) return null;
+    const webUrl = (this.config.get<string[]>('app.corsOrigins')?.[0] ?? 'http://localhost:3000').replace(/\/$/, '');
+    const url = new URL(c.targetUrl, `${webUrl}/`);
+    url.searchParams.set('utm_source', channel === 'in_app' ? 'peace_app' : channel);
+    url.searchParams.set('utm_medium', channel === 'email' ? 'email' : channel === 'in_app' ? 'notification' : 'message');
+    url.searchParams.set('utm_campaign', c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'campaign');
+    return channel === 'in_app' && url.origin === new URL(webUrl).origin ? url.pathname + url.search : url.toString();
+  }
 
   list(storeId: string) {
     return this.prisma.campaign.findMany({ where: { storeId }, orderBy: { createdAt: 'desc' } });
@@ -57,7 +70,7 @@ export class CampaignsService {
     return { count: (await this.resolveAudience(storeId, audience)).length };
   }
 
-  private async resolveAudience(storeId: string, audience: Audience): Promise<Recipient[]> {
+  async resolveAudience(storeId: string, audience: Audience): Promise<Recipient[]> {
     const base = audience?.base || 'all_customers';
     const map = new Map<string, Recipient>();
 
@@ -86,8 +99,8 @@ export class CampaignsService {
     return text.replace(/\{name\}/g, r.name || 'there');
   }
 
-  private emailHtml(subject: string, body: string, targetUrl: string | null) {
-    const cta = targetUrl ? `<p style="margin-top:16px"><a href="${targetUrl}">Shop now →</a></p>` : '';
+  private emailHtml(subject: string, body: string, link: string | null) {
+    const cta = link ? `<p style="margin-top:16px"><a href="${link}">Shop now →</a></p>` : '';
     return `<div><h2>${subject}</h2><p>${body.replace(/\n/g, '<br/>')}</p>${cta}<p style="color:#888;margin-top:24px">— Peace</p></div>`;
   }
 
@@ -98,18 +111,21 @@ export class CampaignsService {
     const recipients = await this.resolveAudience(storeId, (c.audience as Audience) ?? {});
     const subject = c.subject || c.name;
 
+    const links = { email: this.link(c, 'email'), sms: this.link(c, 'sms'), whatsapp: this.link(c, 'whatsapp'), inApp: this.link(c, 'in_app') };
+    const withLink = (text: string, link: string | null) => (link ? `${text}\n${link}` : text);
+
     let count = 0;
     for (const r of recipients) {
       const body = this.render(c.body, r);
       let delivered = false;
       if (c.channels.includes('EMAIL') && r.email && (r.userId ? r.emailOptIn : true)) {
-        await this.notifications.sendEmail(r.email, subject, this.emailHtml(subject, body, c.targetUrl));
+        await this.notifications.sendEmail(r.email, subject, this.emailHtml(subject, body, links.email));
         delivered = true;
       }
-      if (c.channels.includes('SMS') && r.phone && r.smsOptIn) { await this.notifications.sendSms(r.phone, `${subject}: ${body}`); delivered = true; }
-      if (c.channels.includes('WHATSAPP') && r.phone && r.whatsappOptIn) { await this.notifications.sendWhatsapp(r.phone, `${subject}: ${body}`); delivered = true; }
+      if (c.channels.includes('SMS') && r.phone && r.smsOptIn) { await this.notifications.sendSms(r.phone, withLink(`${subject}: ${body}`, links.sms)); delivered = true; }
+      if (c.channels.includes('WHATSAPP') && r.phone && r.whatsappOptIn) { await this.notifications.sendWhatsapp(r.phone, withLink(`${subject}: ${body}`, links.whatsapp)); delivered = true; }
       if (c.channels.includes('IN_APP') && r.userId) {
-        await this.prisma.notification.create({ data: { storeId, userId: r.userId, title: subject, body, deepLink: c.targetUrl } });
+        await this.prisma.notification.create({ data: { storeId, userId: r.userId, title: subject, body, deepLink: links.inApp } });
         delivered = true;
       }
       if (delivered) count++;

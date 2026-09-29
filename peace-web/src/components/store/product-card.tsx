@@ -8,6 +8,7 @@ import { Stars } from "@/components/store/star-rating";
 import { WishlistButton } from "@/components/store/wishlist-button";
 import { cn } from "@/lib/utils/cn";
 import type { ProductCard as Card } from "@/lib/storefront-server";
+import { trackMeta } from "@/lib/meta-pixel";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
@@ -84,7 +85,7 @@ export function ProductCard({ p }: { p: Card }) {
               <button onClick={() => activeVid && setQty(activeVid, inCart.quantity + 1)} className="flex h-9 w-12 items-center justify-center text-ink transition-colors hover:bg-ink hover:text-canvas" aria-label="Increase quantity"><Plus className="h-4 w-4" /></button>
             </div>
           ) : (
-            <button onClick={() => activeVid && add(activeVid, 1)} className="flex w-full items-center justify-center gap-1.5 rounded-full bg-ink py-2.5 text-xs font-semibold text-canvas hover:opacity-90">
+            <button onClick={() => { if (!activeVid) return; add(activeVid, 1); trackMeta("AddToCart", { content_ids: [activeVid], content_type: "product", content_name: p.title, value: p.priceFrom, currency: "INR" }); }} className="flex w-full items-center justify-center gap-1.5 rounded-full bg-ink py-2.5 text-xs font-semibold text-canvas hover:opacity-90">
               <Plus className="h-3.5 w-3.5" /> Add to cart
             </button>
           )}

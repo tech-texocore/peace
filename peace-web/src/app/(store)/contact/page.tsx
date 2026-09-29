@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Clock, Package, RotateCcw, CheckCircle2, Loader2 } from "lucide-react";
 import { useSiteConfig } from "@/context/site-config-context";
 import { api } from "@/lib/api/client";
+import { trackMeta } from "@/lib/meta-pixel";
 
 export default function ContactPage() {
   const { brand } = useSiteConfig();
@@ -19,7 +20,7 @@ export default function ContactPage() {
     e.preventDefault();
     if (!valid) return;
     setBusy(true); setError("");
-    try { await api.post("/contact", form); setSent(true); }
+    try { await api.post("/contact", form); setSent(true); trackMeta("Contact"); }
     catch (err) { setError(err instanceof Error ? err.message : "Could not send. Please try again."); }
     finally { setBusy(false); }
   }

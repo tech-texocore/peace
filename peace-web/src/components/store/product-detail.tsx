@@ -14,12 +14,17 @@ import { Lightbox } from "@/components/store/lightbox";
 import { ReviewsSection } from "@/components/store/reviews-section";
 import { WishlistButton } from "@/components/store/wishlist-button";
 import type { ProductDetail, StoreOffer } from "@/lib/storefront-server";
+import { trackMeta } from "@/lib/meta-pixel";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 export function ProductDetailView({ product: p, offers = [] }: { product: ProductDetail; offers?: StoreOffer[] }) {
   const cart = useCart();
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    trackMeta("ViewContent", { content_ids: [p.id], content_type: "product_group", content_name: p.title, value: p.priceFrom ?? 0, currency: "INR" });
+  }, [p.id, p.title, p.priceFrom]);
 
   async function share() {
     const url = typeof window !== "undefined" ? window.location.href : "";
@@ -89,7 +94,13 @@ export function ProductDetailView({ product: p, offers = [] }: { product: Produc
   const customMissing = isCustom
     ? (p.customizationFields ?? []).filter((f) => f.required && !(custom[f.label] ?? "").trim()).map((f) => f.label)
     : [];
-  const doAdd = () => { if (variant) { cart.add(variant.id, stepperMode ? 1 : qty, Object.keys(custom).length ? custom : undefined); setShowCustomize(false); } };
+  const doAdd = () => {
+    if (!variant) return;
+    const quantity = stepperMode ? 1 : qty;
+    cart.add(variant.id, quantity, Object.keys(custom).length ? custom : undefined);
+    trackMeta("AddToCart", { content_ids: [variant.id], content_type: "product", content_name: p.title, contents: [{ id: variant.id, quantity }], value: price * quantity, currency: "INR" });
+    setShowCustomize(false);
+  };
 
   return (
     <div className="mx-auto max-w-[1800px] px-4 py-6 sm:px-5 lg:px-6">

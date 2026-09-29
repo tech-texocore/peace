@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X, ShoppingBag, Heart, User, Bell } from "lucide-react";
 import { Container } from "./container";
+import { BrandLogo } from "./brand-logo";
 import { SearchBar } from "./search-bar";
 import type { SiteConfig } from "@/lib/site-config";
 import { cn } from "@/lib/utils/cn";
@@ -38,8 +39,8 @@ export function Header({ config }: { config: SiteConfig }) {
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
 
-          <Link href="/" className="font-display text-xl font-medium tracking-tight lg:text-2xl">
-            {brand.name}
+          <Link href="/" aria-label={brand.name} className="font-display text-xl font-medium tracking-tight lg:text-2xl">
+            <BrandLogo brand={brand} place="header" />
           </Link>
         </div>
 

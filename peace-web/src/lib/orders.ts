@@ -11,7 +11,7 @@ export interface CheckoutConfig {
 }
 
 export interface OrderItem {
-  id?: string; productId?: string; name: string; image: string | null; sku?: string | null;
+  id?: string; productId?: string; variantId?: string | null; name: string; image: string | null; sku?: string | null;
   price?: number; mrp?: number | null; quantity: number; customization?: Record<string, unknown> | null;
 }
 export interface OrderEvent { id: string; status: OrderStatus; note: string | null; createdAt: string }
@@ -36,6 +36,7 @@ export interface Order {
 export interface CreateOrderInput {
   items: { variantId: string; quantity: number; customization?: Record<string, unknown> }[];
   couponCodes?: string[]; addressId: string; deliveryMethod: string; paymentMethod: PaymentMethod; notes?: string;
+  tracking?: { fbp?: string; fbc?: string; url?: string };
 }
 export interface CreateOrderResult {
   id: string; orderNumber: string; status: OrderStatus; total: number; paymentMethod: PaymentMethod;
@@ -44,8 +45,8 @@ export interface CreateOrderResult {
 
 export const getCheckoutConfig = () => api.get<CheckoutConfig>("/orders/checkout-config", { auth: true });
 export const createOrder = (input: CreateOrderInput) => api.post<CreateOrderResult>("/orders", input, { auth: true });
-export const verifyPayment = (orderId: string, paymentId: string, signature: string) =>
-  api.post<{ paid: boolean }>(`/orders/${orderId}/verify-payment`, { paymentId, signature }, { auth: true });
+export const verifyPayment = (orderId: string, paymentId: string, signature: string, tracking?: CreateOrderInput["tracking"]) =>
+  api.post<{ paid: boolean }>(`/orders/${orderId}/verify-payment`, { paymentId, signature, tracking }, { auth: true });
 export interface Invoice extends Order {
   store: { name: string; gstin: string | null };
   seller: { name: string; gstin: string | null; city: string | null; state: string | null } | null;

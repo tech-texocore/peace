@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Loader2, Check } from "lucide-react";
 import { env } from "@/lib/config/env";
+import { trackMeta } from "@/lib/meta-pixel";
 
 export function NewsletterForm({ placeholder, cta, successCode }: { placeholder: string; cta: string; successCode: string | null }) {
   const [email, setEmail] = useState("");
@@ -23,6 +24,7 @@ export function NewsletterForm({ placeholder, cta, successCode }: { placeholder:
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((json?.message as string) || "Couldn't subscribe — please try again.");
       setDone(true);
+      trackMeta("Lead", { content_name: "newsletter" });
     } catch (err) {
       setError((err as Error).message);
     } finally {

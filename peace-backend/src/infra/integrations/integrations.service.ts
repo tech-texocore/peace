@@ -1,9 +1,16 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   INTEGRATION_FIELDS,
   MASK,
+  META_GRAPH_VERSION,
+  SUPER_ADMIN_GROUPS,
   type IntegrationGroup,
   type IntegrationSettings,
 } from './integration-fields';
@@ -19,6 +26,7 @@ const empty = (): IntegrationSettings => ({
   email: {},
   sms: {},
   whatsapp: {},
+  meta: {},
 });
 
 // Integration keys live in the database (edited from admin → Integrations),
@@ -47,17 +55,54 @@ export class IntegrationsService implements OnModuleInit {
     this.listeners.push(listener);
   }
 
-  async getMasked(storeId: string) {
-    return this.mask(await this.read(storeId));
+  async getMasked(storeId: string, isSuperAdmin = false) {
+    const masked = this.mask(await this.read(storeId));
+    if (!isSuperAdmin) for (const g of SUPER_ADMIN_GROUPS) delete masked[g];
+    return masked;
   }
 
-  async update(storeId: string, patch: Record<string, Record<string, string>>) {
+  async update(
+    storeId: string,
+    patch: Record<string, Record<string, string>>,
+    isSuperAdmin = false,
+  ) {
     const merged = await this.read(storeId);
     for (const group of Object.keys(INTEGRATION_FIELDS) as IntegrationGroup[]) {
+      if (!isSuperAdmin && SUPER_ADMIN_GROUPS.includes(group)) continue;
       const fields = INTEGRATION_FIELDS[group] as Record<string, boolean>;
       for (const [key, raw] of Object.entries(patch?.[group] ?? {})) {
         if (!(key in fields) || typeof raw !== 'string') continue;
         const value = raw.trim();
+        if (
+          group === 'meta' &&
+          key === 'domainVerification' &&
+          value &&
+          !/^[a-z0-9]{10,64}$/.test(value)
+        ) {
+          throw new BadRequestException(
+            'Domain verification code must be the value from Meta (letters and numbers only)',
+          );
+        }
+        if (
+          group === 'meta' &&
+          key === 'adAccountId' &&
+          value &&
+          !/^(act_)?\d{5,20}$/.test(value)
+        ) {
+          throw new BadRequestException(
+            'Ad Account ID must be the number from Meta Ads Manager',
+          );
+        }
+        if (
+          group === 'meta' &&
+          key === 'pixelId' &&
+          value &&
+          !/^\d{5,20}$/.test(value)
+        ) {
+          throw new BadRequestException(
+            'Meta Pixel ID must be the number shown in Meta Events Manager',
+          );
+        }
         if (fields[key] && (!value || value === MASK)) continue;
         (merged[group] as Record<string, string>)[key] = value;
       }
@@ -68,7 +113,7 @@ export class IntegrationsService implements OnModuleInit {
       data: { integrations: stored },
     });
     await this.reload();
-    return this.mask(merged);
+    return this.getMasked(storeId, isSuperAdmin);
   }
 
   // Checks the saved keys against the provider — used by "Test connection".
@@ -100,6 +145,34 @@ export class IntegrationsService implements OnModuleInit {
         } catch (e) {
           return { ok: false, message: `SMTP error: ${(e as Error).message}` };
         }
+      }
+      if (group === 'meta') {
+        const { pixelId, accessToken } = this.cache.meta;
+        if (!pixelId || !accessToken)
+          return {
+            ok: false,
+            message: 'Add the Pixel ID and access token first.',
+          };
+        const res = await fetch(
+          `https://graph.facebook.com/${META_GRAPH_VERSION}/${encodeURIComponent(pixelId)}?fields=id,name`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          name?: string;
+          error?: { message?: string };
+        };
+        return res.ok
+          ? {
+              ok: true,
+              message: `Connected to pixel "${body.name ?? pixelId}".`,
+            }
+          : {
+              ok: false,
+              message:
+                body.error?.message ?? 'Meta rejected this Pixel ID or token.',
+            };
       }
       if (group === 'razorpay') {
         const { keyId, keySecret } = this.cache.razorpay;

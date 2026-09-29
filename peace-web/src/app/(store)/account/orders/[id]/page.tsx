@@ -8,6 +8,7 @@ import { getMyOrder, cancelOrder, requestReturn, getMyTracking, inr, ORDER_STATU
 import { OrderStatusBadge } from "@/components/store/order-status-badge";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { CustomizationSummary } from "@/components/ui/customization-summary";
+import { trackMeta } from "@/lib/meta-pixel";
 
 const CANCELLABLE = ["PENDING", "CONFIRMED", "PACKED"];
 const RETURN_STEPS = [
@@ -35,6 +36,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const load = () => getMyOrder(id).then(setOrder).catch(() => setNotFound(true));
   useEffect(() => { load(); }, [id]);
+
+  // Browser half of the Purchase event (the server sends the other half with the same event ID).
+  useEffect(() => {
+    if (!placed || !order || (order.paymentMethod !== "COD" && order.paymentStatus !== "PAID")) return;
+    const key = `meta_purchase_${order.orderNumber}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    trackMeta("Purchase", {
+      content_ids: order.items.map((i) => i.variantId ?? i.productId).filter(Boolean),
+      content_type: "product",
+      num_items: order.items.reduce((n, i) => n + i.quantity, 0),
+      value: order.total,
+      currency: "INR",
+    }, order.orderNumber);
+  }, [placed, order]);
 
   async function loadTracking() {
     setTrackingBusy(true);

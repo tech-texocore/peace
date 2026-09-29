@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { OrderStatus, PaymentMethod } from '@prisma/client';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
@@ -9,7 +9,15 @@ export class OrderItemInputDto {
   @IsOptional() @IsObject() customization?: Record<string, unknown>;
 }
 
+export class TrackingDto {
+  @IsOptional() @IsString() @MaxLength(300) fbp?: string;
+  @IsOptional() @IsString() @MaxLength(300) fbc?: string;
+  @IsOptional() @IsString() @MaxLength(500) url?: string;
+}
+
 export class CreateOrderDto {
+  @IsOptional() @ValidateNested() @Type(() => TrackingDto) tracking?: TrackingDto;
+
   @IsArray() @ArrayNotEmpty() @ValidateNested({ each: true }) @Type(() => OrderItemInputDto)
   items!: OrderItemInputDto[];
 
@@ -26,6 +34,7 @@ export class CreateOrderDto {
 }
 
 export class VerifyPaymentDto {
+  @IsOptional() @ValidateNested() @Type(() => TrackingDto) tracking?: TrackingDto;
   @IsString() paymentId!: string;
   @IsString() signature!: string;
 }

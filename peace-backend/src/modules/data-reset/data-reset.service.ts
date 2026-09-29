@@ -241,6 +241,7 @@ export class DataResetService {
     await tx.stockMovement.deleteMany();
     await tx.auditLog.deleteMany();
     await tx.otpChallenge.deleteMany();
+    await tx.metaAudience.deleteMany();
     await tx.discount.updateMany({ data: { usedCount: 0 } });
     return orders.count;
   }

@@ -6,6 +6,7 @@ import { Search, X, Loader2, TrendingUp } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { env } from "@/lib/config/env";
 import { control } from "@/lib/tokens";
+import { trackMeta } from "@/lib/meta-pixel";
 
 interface Suggest {
   products: { slug: string; title: string; image: string | null }[];
@@ -36,7 +37,11 @@ export function SearchBar() {
   }, [q]);
 
   function go(href: string) { setOpen(false); setQ(""); router.push(href); }
-  function submit() { if (q.trim()) go(`/products?search=${encodeURIComponent(q.trim())}`); }
+  function submit() {
+    if (!q.trim()) return;
+    trackMeta("Search", { search_string: q.trim() });
+    go(`/products?search=${encodeURIComponent(q.trim())}`);
+  }
 
   const hasResults = data.products.length || data.categories.length || data.brands.length;
 

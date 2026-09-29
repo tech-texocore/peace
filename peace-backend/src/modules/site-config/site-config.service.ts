@@ -18,10 +18,31 @@ export class SiteConfigService {
   async getForStore(storeId: string) {
     const cfg = await this.prisma.siteConfig.findUnique({ where: { storeId } });
     if (!cfg) throw new NotFoundException('Config not found');
-    return { draft: cfg.draft, published: cfg.published, publishedAt: cfg.publishedAt };
+    return {
+      draft: cfg.draft,
+      published: cfg.published,
+      publishedAt: cfg.publishedAt,
+    };
   }
 
-  saveDraft(storeId: string, draft: Record<string, unknown>) {
+  // The logo is Super Admin only — for anyone else the saved logo is kept as it was.
+  async saveDraft(
+    storeId: string,
+    draft: Record<string, unknown>,
+    canEditLogo = false,
+  ) {
+    if (!canEditLogo) {
+      const current = await this.prisma.siteConfig.findUnique({
+        where: { storeId },
+        select: { draft: true },
+      });
+      const logo =
+        (current?.draft as { brand?: { logo?: unknown } } | null)?.brand
+          ?.logo ?? null;
+      const brand =
+        typeof draft.brand === 'object' && draft.brand ? draft.brand : {};
+      draft = { ...draft, brand: { ...brand, logo } };
+    }
     return this.prisma.siteConfig.update({
       where: { storeId },
       data: { draft: draft as Prisma.InputJsonValue },
@@ -33,7 +54,10 @@ export class SiteConfigService {
     if (!cfg) throw new NotFoundException('Config not found');
     return this.prisma.siteConfig.update({
       where: { storeId },
-      data: { published: cfg.draft as Prisma.InputJsonValue, publishedAt: new Date() },
+      data: {
+        published: cfg.draft as Prisma.InputJsonValue,
+        publishedAt: new Date(),
+      },
     });
   }
 }

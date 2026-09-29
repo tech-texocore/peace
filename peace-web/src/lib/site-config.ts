@@ -48,8 +48,15 @@ export interface Testimonial {
   quote: string;
 }
 
+export interface BrandLogoConfig {
+  url: string;
+  height: number;
+  mobileHeight: number;
+  footerHeight: number;
+}
+
 export interface SiteConfig {
-  brand: { name: string; tagline: string };
+  brand: { name: string; tagline: string; logo?: BrandLogoConfig };
   announcements: string[];
   marquee: string[];
   nav: NavItem[];

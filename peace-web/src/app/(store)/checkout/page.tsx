@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, MapPin, Truck, CreditCard, Banknote, ShieldCheck, Plus, Check, ChevronLeft } from "lucide-react";
@@ -14,6 +14,7 @@ import {
   getCheckoutConfig, createOrder, verifyPayment, inr,
   type CheckoutConfig, type PaymentMethod,
 } from "@/lib/orders";
+import { metaTracking, trackMeta } from "@/lib/meta-pixel";
 
 interface Address {
   id: string; recipientName: string; recipientPhone: string; line1: string; line2?: string | null;
@@ -72,6 +73,19 @@ export default function CheckoutPage() {
     fetchQuote(env.apiBaseUrl, env.storeSlug, items, couponCodes).then(setQuote);
   }, [user, items, couponCodes]);
 
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (!quote || checkoutTracked.current) return;
+    checkoutTracked.current = true;
+    trackMeta("InitiateCheckout", {
+      content_ids: quote.lines.map((l) => l.variantId),
+      content_type: "product",
+      num_items: quote.lines.reduce((n, l) => n + l.quantity, 0),
+      value: quote.total,
+      currency: "INR",
+    });
+  }, [quote]);
+
   if (loading || (user && booting)) {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted" /></div>;
   }
@@ -106,6 +120,7 @@ export default function CheckoutPage() {
       const res = await createOrder({
         items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity, customization: i.customization })),
         couponCodes, addressId, deliveryMethod, paymentMethod: payment,
+        tracking: metaTracking(),
       });
 
       if (res.paymentMethod === "COD" || !res.payment) {
@@ -121,7 +136,7 @@ export default function CheckoutPage() {
         key: res.payment.keyId, order_id: res.payment.orderId, amount: res.payment.amount, currency: res.payment.currency,
         name: "Peace", description: `Order ${res.orderNumber}`,
         handler: async (r: { razorpay_payment_id: string; razorpay_signature: string }) => {
-          try { await verifyPayment(res.id, r.razorpay_payment_id, r.razorpay_signature); clear(); localStorage.removeItem("peace_coupons"); router.push(`/account/orders/${res.id}?placed=1`); }
+          try { await verifyPayment(res.id, r.razorpay_payment_id, r.razorpay_signature, metaTracking()); clear(); localStorage.removeItem("peace_coupons"); router.push(`/account/orders/${res.id}?placed=1`); }
           catch { router.push(`/account/orders/${res.id}`); }
         },
         modal: { ondismiss: () => setPlacing(false) },

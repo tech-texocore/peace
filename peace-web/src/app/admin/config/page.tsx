@@ -8,6 +8,8 @@ import { useAdminAuth } from "@/lib/admin/auth-context";
 import { cn } from "@/lib/utils/cn";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { ImageUpload } from "@/components/ui/image-upload";
+import { BrandLogo, LOGO_DEFAULTS } from "@/components/layout/brand-logo";
+import { prepareLogo } from "@/lib/utils/prepare-logo";
 
 type Config = Record<string, any>;
 
@@ -87,8 +89,8 @@ function PreviewBar({ draft }: { draft: Config }) {
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Live preview · storefront header</p>
       <div className="overflow-hidden rounded-2xl border border-line bg-canvas shadow-sm">
         {showAnn && <div className="truncate bg-ink px-4 py-1.5 text-center text-[11px] font-medium text-canvas">{announcements.join("   •   ")}</div>}
-        <div className="flex items-center gap-4 px-4 py-3">
-          <span className="font-display text-lg font-medium">{draft.brand?.name || "Brand"}</span>
+        <div className="flex h-16 items-center gap-4 px-4">
+          <span className="font-display text-lg font-medium"><BrandLogo brand={{ ...draft.brand, name: draft.brand?.name || "Brand" }} place="header" /></span>
           <nav className="hidden flex-1 items-center justify-center gap-5 text-[11px] font-semibold uppercase tracking-wide text-muted sm:flex">
             {nav.map((n, i) => <span key={i}>{n.label}</span>)}
           </nav>
@@ -124,6 +126,15 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   );
 }
 
+function SizeSlider({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex justify-between text-xs"><span className="font-medium">{label}</span><span className="text-muted">{value}px</span></span>
+      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full accent-accent" />
+    </label>
+  );
+}
+
 function SectionCard({ title, subtitle, on, onToggle, children }: { title: string; subtitle?: string; on?: boolean; onToggle?: () => void; children?: ReactNode }) {
   return (
     <section className="flex flex-col rounded-2xl border border-line bg-card p-5">
@@ -148,7 +159,8 @@ function SectionCard({ title, subtitle, on, onToggle, children }: { title: strin
 }
 
 export default function ConfigPage() {
-  const { storeId, hasPermission } = useAdminAuth();
+  const { storeId, hasPermission, profile } = useAdminAuth();
+  const isSuper = profile?.role === "SUPER_ADMIN";
   const confirm = useConfirm();
   const [draft, setDraft] = useState<Config | null>(null);
   const [products, setProducts] = useState<{ slug: string; title: string }[]>([]);
@@ -253,6 +265,36 @@ export default function ConfigPage() {
           <Field label="Brand name" value={draft.brand?.name ?? ""} onChange={(v) => set(["brand", "name"], v)} />
           <Field label="Tagline" value={draft.brand?.tagline ?? ""} onChange={(v) => set(["brand", "tagline"], v)} textarea />
         </SectionCard>
+
+        {isSuper && (
+          <SectionCard title="Logo" subtitle="Replaces the brand name in the header and footer · Super Admin only">
+            <ImageUpload
+              label="Logo image"
+              hint="PNG, SVG or WebP with a transparent background works best · empty margins are trimmed automatically"
+              prepare={prepareLogo}
+              value={draft.brand?.logo?.url ?? ""}
+              onChange={(url) => set(["brand", "logo"], { ...LOGO_DEFAULTS, ...(draft.brand?.logo ?? {}), url })}
+            />
+            {draft.brand?.logo?.url && (
+              <div className="mt-5 space-y-4">
+                <SizeSlider label="Header · desktop" value={draft.brand.logo.height} min={16} max={56} onChange={(v) => set(["brand", "logo", "height"], v)} />
+                <SizeSlider label="Header · mobile" value={draft.brand.logo.mobileHeight} min={16} max={48} onChange={(v) => set(["brand", "logo", "mobileHeight"], v)} />
+                <SizeSlider label="Footer" value={draft.brand.logo.footerHeight} min={16} max={120} onChange={(v) => set(["brand", "logo", "footerHeight"], v)} />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Mobile header</p>
+                    <div className="flex h-14 items-center rounded-xl border border-line bg-canvas px-4"><BrandLogo brand={draft.brand} place="header" height={draft.brand.logo.mobileHeight} /></div>
+                  </div>
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">Footer</p>
+                    <div className="flex min-h-14 items-center rounded-xl border border-line bg-card px-4 py-3"><BrandLogo brand={draft.brand} place="footer" height={draft.brand.logo.footerHeight} /></div>
+                  </div>
+                </div>
+                <button type="button" onClick={() => set(["brand", "logo"], null)} className="text-xs text-muted hover:text-danger">Remove logo · show the brand name again</button>
+              </div>
+            )}
+          </SectionCard>
+        )}
 
         <SectionCard title="Header Navigation" subtitle="Top menu links — add, rename, reorder or remove">
           <div className="space-y-2">

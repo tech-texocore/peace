@@ -13,21 +13,23 @@ interface Props {
   folder?: string;
   className?: string;
   hint?: string;
+  prepare?: (file: File) => Promise<File>;
 }
 
 // Reusable single-image uploader — posts to /media/upload and returns a URL.
-export function ImageUpload({ label, value, onChange, folder = "misc", className, hint }: Props) {
+export function ImageUpload({ label, value, onChange, folder = "misc", className, hint, prepare }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function pick(file?: File) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return setError("Choose an image file");
-    if (file.size > 5 * 1024 * 1024) return setError("Image must be under 5 MB");
+  async function pick(picked?: File) {
+    if (!picked) return;
+    if (!picked.type.startsWith("image/")) return setError("Choose an image file");
     setError(null);
     setBusy(true);
     try {
+      const file = prepare ? await prepare(picked) : picked;
+      if (file.size > 5 * 1024 * 1024) return setError("Image must be under 5 MB");
       const res = await api.upload<{ url: string }>(`/media/upload?folder=${folder}`, file, { auth: true });
       onChange(res.url);
     } catch (err) {

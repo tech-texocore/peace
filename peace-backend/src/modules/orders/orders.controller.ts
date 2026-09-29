@@ -7,7 +7,14 @@ import { CurrentUser, type AuthUser } from '../../common/decorators/current-user
 import { Public } from '../../common/decorators/public.decorator';
 import { ReturnStatus } from '@prisma/client';
 import { OrdersService } from './orders.service';
+import type { MetaContext } from '../meta/meta-capi.service';
 import { CancelOrderDto, CreateOrderDto, ListOrdersDto, RequestReturnDto, ResolveReturnDto, UpdateOrderStatusDto, VerifyPaymentDto } from './dto/order.dto';
+
+const metaContext = (req: Request, t?: { fbp?: string; fbc?: string; url?: string }): MetaContext => ({
+  ip: req.ip,
+  userAgent: req.headers['user-agent'],
+  ...t,
+});
 
 @Controller('orders')
 export class OrdersController {
@@ -60,14 +67,14 @@ export class OrdersController {
 
   @Audit('order.placed', 'order')
   @Post()
-  create(@CurrentUser('uid') uid: string, @Body() dto: CreateOrderDto) {
-    return this.orders.create(uid, dto);
+  create(@CurrentUser('uid') uid: string, @Body() dto: CreateOrderDto, @Req() req: Request) {
+    return this.orders.create(uid, dto, metaContext(req, dto.tracking));
   }
 
   @Audit('payment.captured', 'order')
   @Post(':id/verify-payment')
-  verifyPayment(@CurrentUser('uid') uid: string, @Param('id') id: string, @Body() dto: VerifyPaymentDto) {
-    return this.orders.verifyPayment(uid, id, dto.paymentId, dto.signature);
+  verifyPayment(@CurrentUser('uid') uid: string, @Param('id') id: string, @Body() dto: VerifyPaymentDto, @Req() req: Request) {
+    return this.orders.verifyPayment(uid, id, dto.paymentId, dto.signature, metaContext(req, dto.tracking));
   }
 
   @Audit('order.cancelled', 'order')

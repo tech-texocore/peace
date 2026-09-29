@@ -9,6 +9,7 @@ import { ShippingService } from '../../infra/shipping/shipping.service';
 import type { ShipmentInput } from '../../infra/shipping/shipping.types';
 import { resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
+import { MetaCapiService, type MetaContext } from '../meta/meta-capi.service';
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const CANCELLABLE: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PACKED'];
@@ -34,6 +35,7 @@ export class OrdersService {
     private readonly payments: PaymentsService,
     private readonly notifications: NotificationsService,
     private readonly shipping: ShippingService,
+    private readonly meta: MetaCapiService,
   ) {}
 
   get shippingEnabled() { return this.shipping.configured; }
@@ -164,7 +166,7 @@ export class OrdersService {
     };
   }
 
-  async create(uid: string, dto: CreateOrderDto) {
+  async create(uid: string, dto: CreateOrderDto, metaCtx: MetaContext = {}) {
     const user = await this.user(uid);
     const storeId = await this.storeForItems(dto.items.map((i) => i.variantId));
 
@@ -250,7 +252,10 @@ export class OrdersService {
       });
     });
 
-    if (!online) void this.notifyOrder(order.id, `Order ${order.orderNumber} confirmed`, 'Thanks for your order! We’ve received it and it’s confirmed.');
+    if (!online) {
+      void this.notifyOrder(order.id, `Order ${order.orderNumber} confirmed`, 'Thanks for your order! We’ve received it and it’s confirmed.');
+      this.meta.purchase(order.id, metaCtx);
+    }
 
     return {
       id: order.id, orderNumber: order.orderNumber, status: order.status, total: Number(order.total),
@@ -261,7 +266,7 @@ export class OrdersService {
     };
   }
 
-  async verifyPayment(uid: string, orderId: string, paymentId: string, signature: string) {
+  async verifyPayment(uid: string, orderId: string, paymentId: string, signature: string, metaCtx: MetaContext = {}) {
     const user = await this.user(uid);
     const order = await this.prisma.order.findFirst({ where: { id: orderId, userId: user.id } });
     if (!order) throw new NotFoundException('Order not found');
@@ -279,6 +284,7 @@ export class OrdersService {
       },
     });
     void this.notifyOrder(order.id, `Payment received for ${order.orderNumber}`, 'Your payment was successful and your order is confirmed.');
+    this.meta.purchase(order.id, metaCtx);
     return { paid: true };
   }
 
@@ -293,6 +299,7 @@ export class OrdersService {
           where: { id: order.id },
           data: { paymentStatus: 'PAID', paymentRef: entity.id ?? null, status: 'CONFIRMED', events: { create: { status: 'CONFIRMED', note: 'Payment confirmed (webhook)' } } },
         });
+        this.meta.purchase(order.id);
       }
     }
     return { received: true };

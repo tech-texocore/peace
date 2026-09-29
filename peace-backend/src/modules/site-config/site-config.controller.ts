@@ -1,8 +1,20 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { Audit } from '../../common/decorators/audit.decorator';
-import { CurrentUser, type AuthUser } from '../../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type AuthUser,
+} from '../../common/decorators/current-user.decorator';
 import { SiteConfigService } from './site-config.service';
 import { UpdateDraftDto } from './dto/update-draft.dto';
 
@@ -25,8 +37,16 @@ export class SiteConfigController {
 
   @RequirePermissions('config.update')
   @Put('draft')
-  saveDraft(@CurrentUser() user: AuthUser, @Body() dto: UpdateDraftDto, @Query('storeId') storeId?: string) {
-    return this.config.saveDraft(this.resolveStoreId(user, storeId), dto.draft);
+  saveDraft(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateDraftDto,
+    @Query('storeId') storeId?: string,
+  ) {
+    return this.config.saveDraft(
+      this.resolveStoreId(user, storeId),
+      dto.draft,
+      user.role === 'SUPER_ADMIN',
+    );
   }
 
   @RequirePermissions('config.publish')

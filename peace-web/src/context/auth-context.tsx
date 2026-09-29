@@ -11,6 +11,7 @@ import {
 import {
   createUserWithEmailAndPassword,
   EmailAuthProvider,
+  getAdditionalUserInfo,
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendPasswordResetEmail,
@@ -22,6 +23,7 @@ import {
   type User,
 } from "firebase/auth";
 import { firebaseAuth, googleProvider } from "@/lib/firebase/client";
+import { trackMeta } from "@/lib/meta-pixel";
 import { api } from "@/lib/api/client";
 
 type AdminRole = "SUPER_ADMIN" | "ADMIN" | "STAFF";
@@ -75,7 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasPasswordLogin: !!user?.providerData.some((p) => p.providerId === "password"),
       signInWithGoogle: async () => {
         if (!firebaseAuth) throw new Error("Auth is not configured");
-        await signInWithPopup(firebaseAuth, googleProvider);
+        const cred = await signInWithPopup(firebaseAuth, googleProvider);
+        if (getAdditionalUserInfo(cred)?.isNewUser) trackMeta("CompleteRegistration", { content_name: "google" });
       },
       signInWithEmail: async (email, password) => {
         if (!firebaseAuth) throw new Error("Auth is not configured");
@@ -85,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!firebaseAuth) throw new Error("Auth is not configured");
         const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password);
         if (name) await updateProfile(cred.user, { displayName: name });
+        trackMeta("CompleteRegistration", { content_name: "email" });
       },
       resetPassword: async (email) => {
         if (!firebaseAuth) throw new Error("Auth is not configured");

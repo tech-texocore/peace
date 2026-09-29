@@ -57,6 +57,9 @@ Clothing & textiles ecommerce built to Flipkart / Amazon / Shopify standard. Sin
 - Site settings, sellers
 - Integrations screen: Razorpay, BharatShip, email, SMS, WhatsApp keys — encrypted, live on save, test connection
 - Email over any SMTP (free Gmail / Brevo) — order emails, contact form, verification codes
+- Store logo with size controls (Super Admin), auto-trimmed on upload
+- Meta Ads (Super Admin): Pixel + Conversions API, domain verification, product catalog feed, Custom Audiences
+- Campaign links carry UTM tags per channel
 - Danger Zone (Super Admin): delete all transaction data / restart fresh, with typed confirmation + email code
 
 ### Marketing & engagement

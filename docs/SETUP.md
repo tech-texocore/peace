@@ -42,6 +42,19 @@ The storefront contact form sends to the **Support email** in admin → Site Set
 
 Until email is set up, emails print in the API log. Order emails, contact-form messages and Danger Zone codes all use it.
 
+**Logo** (admin → Site Config → Logo, Super Admin only) — upload PNG/SVG/WebP; empty margins are trimmed automatically. Sizes: header desktop, header mobile, footer (recommended 40 / 30 / 56 px). Publish to go live.
+
+**Meta Ads** (admin → Marketing → Meta Ads, Super Admin only):
+
+| Part | What it does | You provide |
+|---|---|---|
+| Pixel + Conversions API | Shop events (view, search, wishlist, add to cart, checkout, purchase, sign-up, newsletter, contact) from the browser and the server, de-duplicated by order number | Pixel ID + access token (Events Manager) |
+| Domain verification | Adds Meta's tag to every page | Code from Business settings → Domains |
+| Catalog feed | `https://api.<domain>/api/feeds/meta-catalog.csv` — one row per size/colour | Add it as a scheduled data feed in Commerce Manager |
+| Audiences | Customer segments (opted-in only, hashed) sent as Custom Audiences | Ad Account ID + token with `ads_management` |
+
+Check events in Events Manager → Test events (enter the test event code while testing, remove it after).
+
 **Danger Zone** (admin → Danger Zone, Super Admin only) — *Delete all transaction data* (orders, returns, customers and their logins, reviews, subscribers, audit log; masters reset to the standard lists) and *Delete all data and restart fresh* (also catalog, product images, discounts, campaigns, Admin/Staff accounts; keeps Super Admins, settings, theme, roles, sellers, customer groups, integration keys). Each needs typing `DELETE` plus a code emailed to the Super Admin. On the live server they stay blocked until email is set up.
 
 Only `peace-web/next.config.ts` decides which values reach the browser — API URL, store name/slug and the Firebase web keys. Everything else stays server-side.

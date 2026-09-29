@@ -19,6 +19,14 @@ export const INTEGRATION_FIELDS = {
   },
   sms: { senderId: false, apiKey: true },
   whatsapp: { phoneNumberId: false, accessToken: true },
+  meta: {
+    pixelId: false,
+    accessToken: true,
+    testEventCode: false,
+    domainVerification: false,
+    adAccountId: false,
+    audienceToken: true,
+  },
 } as const;
 
 type Fields = typeof INTEGRATION_FIELDS;
@@ -28,3 +36,7 @@ export type IntegrationSettings = {
 };
 
 export const MASK = '••••••••';
+
+export const META_GRAPH_VERSION = 'v26.0';
+
+export const SUPER_ADMIN_GROUPS: IntegrationGroup[] = ['meta'];

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AtSign, Send, Share2 } from "lucide-react";
 import { Container } from "./container";
+import { BrandLogo } from "./brand-logo";
 import type { SiteConfig } from "@/lib/site-config";
 
 const socials = [AtSign, Send, Share2];
@@ -12,7 +13,7 @@ export function Footer({ config }: { config: SiteConfig }) {
     <footer className="mt-auto border-t border-line bg-card">
       <Container className="grid grid-cols-2 gap-x-8 gap-y-8 py-10 sm:grid-cols-3 lg:grid-cols-5">
         <div className="col-span-2 lg:col-span-2">
-          <h3 className="font-display text-xl font-medium">{brand.name}</h3>
+          <h3 className="font-display text-xl font-medium"><BrandLogo brand={brand} place="footer" /></h3>
           <p className="mt-2 max-w-xs text-sm text-muted">{brand.tagline}</p>
           <div className="mt-4 flex gap-2">
             {socials.map((Icon, i) => (

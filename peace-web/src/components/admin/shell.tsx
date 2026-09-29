@@ -3,8 +3,11 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, SlidersHorizontal, ShieldCheck, Users, Store, Plug, ScrollText, Palette, Building2, Database, FolderTree, Layers, Package, Tag, Ticket, Star, ShoppingCart, Boxes, Contact, LogOut, Loader2, Menu, X, Mail, Megaphone, TriangleAlert } from "lucide-react";
+import { LayoutDashboard, SlidersHorizontal, ShieldCheck, Users, Store, Plug, ScrollText, Palette, Building2, Database, FolderTree, Layers, Package, Tag, Ticket, Star, ShoppingCart, Boxes, Contact, LogOut, Loader2, Menu, X, Mail, Megaphone, TriangleAlert, Target } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin/auth-context";
+import { apiBase, env } from "@/lib/config/env";
+import type { SiteConfig } from "@/lib/site-config";
+import { BrandLogo } from "@/components/layout/brand-logo";
 import { cn } from "@/lib/utils/cn";
 
 // Ordered as a setup → sell → configure flow: prerequisites first, then the catalog they feed,
@@ -31,6 +34,8 @@ const navGroups: { title: string | null; items: { href: string; label: string; i
   ] },
   { title: "Marketing", items: [
     { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone, permission: "campaigns.read" },
+    // Not in the permission catalog, so no role can grant it — Super Admin only.
+    { href: "/admin/meta", label: "Meta Ads", icon: Target, permission: "platform.meta" },
     { href: "/admin/discounts", label: "Discounts", icon: Ticket, permission: "discounts.read" },
     { href: "/admin/subscriptions", label: "Subscriptions", icon: Mail, permission: "subscriptions.read" },
   ] },
@@ -53,6 +58,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { loading, profile, logout, hasPermission } = useAdminAuth();
+  const [brand, setBrand] = useState<SiteConfig["brand"] | null>(null);
+
+  useEffect(() => {
+    fetch(`${apiBase()}/site-config/published/${env.storeSlug}`)
+      .then((r) => r.json())
+      .then((b) => setBrand(b?.data?.brand ?? null))
+      .catch(() => {});
+  }, []);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const isLogin = pathname === "/admin/login";
@@ -127,9 +140,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-card md:flex">
         <div className="flex h-14 items-center border-b border-line px-5">
-          <Link href="/admin" className="font-display text-lg font-medium">
-            Peace <span className="text-muted">Admin</span>
-          </Link>
+          <Link href="/admin" className="flex items-center gap-2 font-display text-lg font-medium">{brand ? <BrandLogo brand={brand} place="header" height={28} /> : "Peace"} <span className="text-muted">Admin</span></Link>
         </div>
         {navContent}
         {userFooter}
@@ -140,7 +151,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <button className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} aria-label="Close menu" />
           <div className="relative flex w-72 max-w-[85vw] flex-col border-r border-line bg-card shadow-2xl">
             <div className="flex h-14 items-center justify-between border-b border-line px-5">
-              <Link href="/admin" className="font-display text-lg font-medium">Peace <span className="text-muted">Admin</span></Link>
+              <Link href="/admin" className="flex items-center gap-2 font-display text-lg font-medium">{brand ? <BrandLogo brand={brand} place="header" height={28} /> : "Peace"} <span className="text-muted">Admin</span></Link>
               <button onClick={() => setDrawerOpen(false)} className="rounded-lg p-1.5 text-muted hover:bg-accent-soft"><X className="h-5 w-5" /></button>
             </div>
             {navContent}

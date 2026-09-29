@@ -39,6 +39,7 @@ import { SiteConfigModule } from './modules/site-config/site-config.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { DataResetModule } from './modules/data-reset/data-reset.module';
+import { MetaModule } from './modules/meta/meta.module';
 import { AccountModule } from './modules/account/account.module';
 import { GeoModule } from './modules/geo/geo.module';
 import { SellersModule } from './modules/sellers/sellers.module';
@@ -107,6 +108,7 @@ const isLoopback = (ip?: string) =>
     ShippingModule,
     OtpModule,
     DataResetModule,
+    MetaModule,
 
     // Platform modules
     AccessModule,
