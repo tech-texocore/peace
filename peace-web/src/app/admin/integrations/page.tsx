@@ -69,6 +69,7 @@ export default function IntegrationsPage() {
   const [form, setForm] = useState<Integrations>({});
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [tests, setTests] = useState<Record<string, { ok: boolean; message: string } | "running">>({});
 
   const q = storeId ? `?storeId=${storeId}` : "";
@@ -97,10 +98,16 @@ export default function IntegrationsPage() {
 
   async function save() {
     setSaving(true);
-    fill(await api.put<Integrations>(`/stores/integrations${q}`, { integrations: form }, { auth: true }));
-    setSaving(false);
-    setTests({});
-    setStatus("Saved — changes are live");
+    setError(null);
+    try {
+      fill(await api.put<Integrations>(`/stores/integrations${q}`, { integrations: form }, { auth: true }));
+      setTests({});
+      setStatus("Saved — changes are live");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function test(group: string) {
@@ -140,6 +147,9 @@ export default function IntegrationsPage() {
                     <Field
                       label={f.label}
                       type={f.secret ? "password" : "text"}
+                      autoComplete={f.secret ? "new-password" : "off"}
+                      data-1p-ignore
+                      data-lpignore="true"
                       value={form[g.key]?.[f.k] ?? ""}
                       onChange={(v) => set(g.key, f.k, v)}
                       placeholder={f.secret && saved(g.key, f.k) ? "Saved — leave blank to keep" : f.placeholder ?? ""}
@@ -185,6 +195,7 @@ export default function IntegrationsPage() {
 
       {canEdit && (
         <div className="sticky bottom-4 mt-6 flex items-center justify-end gap-3">
+          {error && <span className="flex items-center gap-1 text-sm text-danger"><CircleAlert className="h-4 w-4" /> {error}</span>}
           {status && <span className="flex items-center gap-1 text-sm text-accent"><Check className="h-4 w-4" /> {status}</span>}
           <button onClick={save} disabled={saving} className="flex items-center gap-2 rounded-full bg-accent px-8 py-3 text-xs font-semibold uppercase tracking-widest text-accent-foreground hover:opacity-90 disabled:opacity-50">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />} Save keys

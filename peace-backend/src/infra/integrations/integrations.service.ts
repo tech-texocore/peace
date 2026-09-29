@@ -103,6 +103,16 @@ export class IntegrationsService implements OnModuleInit {
             'Meta Pixel ID must be the number shown in Meta Events Manager',
           );
         }
+        if (
+          group === 'razorpay' &&
+          key === 'keyId' &&
+          value &&
+          !/^rzp_(test|live)_[A-Za-z0-9]+$/.test(value)
+        ) {
+          throw new BadRequestException(
+            'Razorpay Key ID must start with rzp_live_ or rzp_test_',
+          );
+        }
         if (fields[key] && (!value || value === MASK)) continue;
         (merged[group] as Record<string, string>)[key] = value;
       }

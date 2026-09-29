@@ -158,6 +158,9 @@ export default function MetaAdsPage() {
                 key={f.k}
                 label={f.label}
                 type={f.secret ? "password" : "text"}
+                autoComplete={f.secret ? "new-password" : "off"}
+                data-1p-ignore
+                data-lpignore="true"
                 value={form[f.k] ?? ""}
                 onChange={(v) => setForm((s) => ({ ...s, [f.k]: v }))}
                 placeholder={f.secret && keys[f.k] === MASK ? "Saved — leave blank to keep" : f.placeholder}
