@@ -6,7 +6,8 @@ import {
   type MediaFolder,
 } from '../../infra/media/media.service';
 import { FirebaseService } from '../../infra/firebase/firebase.service';
-import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { EmailService } from '../../infra/notifications/email.service';
+import { verificationCodeEmail } from '../../infra/notifications/email-content';
 import { SmtpEmailProvider } from '../../infra/notifications/providers/smtp-email.provider';
 import { MastersService } from '../masters/masters.service';
 import { OtpService } from '../otp/otp.service';
@@ -39,7 +40,7 @@ export class DataResetService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly firebase: FirebaseService,
-    private readonly notifications: NotificationsService,
+    private readonly mailer: EmailService,
     private readonly email: SmtpEmailProvider,
     private readonly masters: MastersService,
     private readonly otp: OtpService,
@@ -106,13 +107,8 @@ export class DataResetService {
       this.logger.warn(
         `[DEV] ${LABEL[scope]} — verification code for ${to}: ${code}`,
       );
-    await this.notifications.sendEmailOrThrow(
-      to,
-      `Peace — verification code: ${LABEL[scope]}`,
-      `<p>You asked to <b>${LABEL[scope].toLowerCase()}</b> in the Peace admin.</p>
-       <p style="font-size:24px;letter-spacing:4px"><b>${code}</b></p>
-       <p>Valid for ${ttl / 60} minutes. This cannot be undone. If this wasn't you, ignore this email and change your password.</p>`,
-    );
+    const store = await this.prisma.store.findFirstOrThrow({ select: { id: true } });
+    await this.mailer.sendOrThrow(store.id, to, `Verification code: ${LABEL[scope]}`, verificationCodeEmail(LABEL[scope], code, ttl / 60));
     return { sent: true, to, expiresInSeconds: ttl };
   }
 

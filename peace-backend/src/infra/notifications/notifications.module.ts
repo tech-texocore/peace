@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { EmailService } from './email.service';
+import { EmailSamplesService } from './email-samples.service';
 import {
   EMAIL_PROVIDER,
   PUSH_PROVIDER,
@@ -26,7 +28,9 @@ import { SmtpEmailProvider } from './providers/smtp-email.provider';
     { provide: WHATSAPP_PROVIDER, useClass: ConsoleWhatsappProvider },
     { provide: PUSH_PROVIDER, useClass: ConsolePushProvider },
     NotificationsService,
+    EmailService,
+    EmailSamplesService,
   ],
-  exports: [NotificationsService, SmtpEmailProvider],
+  exports: [NotificationsService, EmailService, EmailSamplesService, SmtpEmailProvider],
 })
 export class NotificationsModule {}

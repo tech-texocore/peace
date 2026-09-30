@@ -4,13 +4,15 @@ import { OrderStatus, PaymentMethod, PaymentStatus, ReturnStatus, Prisma } from 
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { PricingService } from '../discounts/pricing.service';
 import { PaymentsService } from '../payments/payments.service';
-import { NotificationsService } from '../../infra/notifications/notifications.service';
 import { ShippingService } from '../../infra/shipping/shipping.service';
 import type { ShipmentInput, TrackingResult } from '../../infra/shipping/shipping.types';
 import { afterSalesOption, POLICY_SELECT, type AfterSalesType } from './after-sales.policy';
 import { qualifiesForFreeDelivery, resolveShipping } from './checkout.config';
 import type { CreateOrderDto } from './dto/order.dto';
 import { MetaCapiService, type MetaContext } from '../meta/meta-capi.service';
+import { EmailService } from '../../infra/notifications/email.service';
+import { orderEmail } from '../../infra/notifications/email-content';
+import { orderEmailData } from './order-email-data';
 
 const round = (n: number) => Math.round(n * 100) / 100;
 const CANCELLABLE: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PACKED'];
@@ -57,9 +59,9 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     private readonly payments: PaymentsService,
-    private readonly notifications: NotificationsService,
     private readonly shipping: ShippingService,
     private readonly meta: MetaCapiService,
+    private readonly email: EmailService,
   ) {}
 
   get shippingEnabled() { return this.shipping.configured; }
@@ -220,18 +222,22 @@ export class OrdersService {
     if (stale.length) this.logger.log(`Expired ${stale.length} unpaid order(s); reserved stock released`);
   }
 
-  // Order-lifecycle email (fire-and-forget; console provider until SMTP keys are set).
+  // Bell notification + email for every order update; never blocks the order flow.
   private async notifyOrder(orderId: string, subject: string, line: string) {
     try {
-      const o = await this.prisma.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, total: true, storeId: true, userId: true, user: { select: { email: true, name: true } } } });
+      const o = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        include: { items: { include: { variant: { select: { attributes: true } } } }, user: { select: { email: true, name: true } } },
+      });
       if (!o) return;
-      // In-app bell notification — order updates are transactional (always delivered).
-      await this.prisma.notification.create({ data: { storeId: o.storeId, userId: o.userId, title: subject, body: line, deepLink: `/account/orders/${orderId}` } });
-      if (o.user.email) {
-        const html = `<p>Hi ${o.user.name ?? 'there'},</p><p>${line}</p><p>Order <b>${o.orderNumber}</b> · Total ₹${Number(o.total).toLocaleString('en-IN')}</p><p>— Peace</p>`;
-        await this.notifications.sendEmail(o.user.email, subject, html);
-      }
-    } catch { /* notifications must never block the order flow */ }
+      const orderPath = `/account/orders/${orderId}`;
+      await this.prisma.notification.create({ data: { storeId: o.storeId, userId: o.userId, title: subject, body: line, deepLink: orderPath } });
+      if (!o.user.email) return;
+
+      await this.email.send(o.storeId, o.user.email, subject, orderEmail(this.email, orderEmailData(o), subject, line));
+    } catch (err) {
+      this.logger.warn(`Order notification failed for ${orderId}: ${(err as Error).message}`);
+    }
   }
 
   private async user(uid: string) {

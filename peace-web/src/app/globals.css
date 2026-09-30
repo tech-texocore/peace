@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
+/* Light theme only: dark: styles apply only under a .dark class, which the site never sets. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  /* Light only — the site never follows the device dark mode. */
+  color-scheme: light;
   --canvas: #f4f0e8;
   --card: #fbf8f2;
   --ink: #201f1b;
@@ -10,20 +15,6 @@
   --accent-foreground: #f6f3ec;
   --accent-soft: #e7ece2;
   --danger: #a4442f;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --canvas: #141410;
-    --card: #1d1d17;
-    --ink: #ece7db;
-    --muted: #a8a498;
-    --line: #2b2b22;
-    --accent: #93b89d;
-    --accent-foreground: #14140e;
-    --accent-soft: #23271f;
-    --danger: #e0876f;
-  }
 }
 
 @theme inline {

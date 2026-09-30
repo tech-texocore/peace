@@ -1,27 +1,24 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { EmailService } from '../../infra/notifications/email.service';
 
 @Injectable()
 export class SubscriptionsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
-  private restockEmail(title: string, slug: string) {
-    return `<p>Good news! <b>${title}</b> is back in stock.</p><p>Grab it before it sells out — <a href="/products/${slug}">view the product</a>.</p><p>— Peace</p>`;
-  }
 
   async notifyOne(storeId: string, id: string) {
     const sub = await this.prisma.backInStockSubscription.findFirst({
       where: { id, storeId },
-      include: { variant: { select: { stock: true, product: { select: { title: true, slug: true } } } } },
+      include: { variant: { select: { stock: true } } },
     });
     if (!sub) throw new NotFoundException('Request not found');
     if (sub.variant.stock <= 0) throw new BadRequestException('This item is still out of stock — restock it first.');
-    await this.notifications.sendEmail(sub.email, `${sub.variant.product.title} is back in stock`, this.restockEmail(sub.variant.product.title, sub.variant.product.slug));
+    await this.email.sendBackInStock(sub.variantId, sub.email);
     await this.prisma.backInStockSubscription.update({ where: { id }, data: { notified: true } });
     return { notified: 1 };
   }
@@ -29,10 +26,10 @@ export class SubscriptionsService {
   async notifyAllInStock(storeId: string) {
     const subs = await this.prisma.backInStockSubscription.findMany({
       where: { storeId, notified: false, variant: { stock: { gt: 0 } } },
-      include: { variant: { select: { product: { select: { title: true, slug: true } } } } },
+      select: { id: true, email: true, variantId: true },
     });
     for (const s of subs) {
-      await this.notifications.sendEmail(s.email, `${s.variant.product.title} is back in stock`, this.restockEmail(s.variant.product.title, s.variant.product.slug));
+      await this.email.sendBackInStock(s.variantId, s.email);
     }
     if (subs.length) await this.prisma.backInStockSubscription.updateMany({ where: { id: { in: subs.map((s) => s.id) } }, data: { notified: true } });
     return { notified: subs.length };
@@ -77,5 +74,12 @@ export class SubscriptionsService {
       })),
       total, pending, page, limit,
     };
+  }
+
+  async unsubscribe(token: string) {
+    const target = this.email.readUnsubscribeToken(token);
+    if (!target) throw new BadRequestException('This unsubscribe link is not valid.');
+    await this.prisma.newsletterSubscriber.updateMany({ where: { storeId: target.storeId, email: { equals: target.email, mode: 'insensitive' } }, data: { status: 'UNSUBSCRIBED' } });
+    return { unsubscribed: true, email: target.email };
   }
 }

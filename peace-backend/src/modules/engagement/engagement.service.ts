@@ -2,10 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { EmailService } from '../../infra/notifications/email.service';
+import type { EmailContent } from '../../infra/notifications/email-template';
+import { cartReminderEmail, firstName, priceDropEmail } from '../../infra/notifications/email-content';
 import { wants } from '../../common/notification-prefs';
 import { resolveEngagement } from './engagement.config';
 
-interface DispatchPayload { title: string; body: string; deepLink?: string }
+interface DispatchPayload { title: string; body: string; deepLink?: string; email?: (customerName: string | null) => EmailContent }
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -16,12 +19,13 @@ export class EngagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   async dispatch(storeId: string, userId: string, category: string, payload: DispatchPayload): Promise<boolean> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { email: true, phone: true, emailOptIn: true, smsOptIn: true, whatsappOptIn: true, notificationPrefs: true },
+      select: { name: true, email: true, phone: true, emailOptIn: true, smsOptIn: true, whatsappOptIn: true, notificationPrefs: true },
     });
     if (!user) return false;
 
@@ -33,7 +37,16 @@ export class EngagementService {
       delivered = true;
     }
     if (user.email && wants(user, category, 'email')) {
-      await this.notifications.sendEmail(user.email, payload.title, this.emailHtml(payload));
+      const content: EmailContent = payload.email?.(user.name) ?? {
+        preheader: payload.body,
+        heading: payload.title,
+        greeting: `Hi ${firstName(user.name) ?? 'there'},`,
+        paragraphs: [payload.body],
+        ...(payload.deepLink && { cta: { label: 'Open', url: this.email.link(payload.deepLink) } }),
+        reason: 'You get these emails because of your account notification settings.',
+        preferencesUrl: this.email.link('/account/preferences'),
+      };
+      await this.email.send(storeId, user.email, payload.title, content);
       delivered = true;
     }
     if (user.phone && wants(user, category, 'sms')) {
@@ -68,9 +81,13 @@ export class EngagementService {
 
     const title = `Price drop on ${product.title}`;
     const body = `Now ${inr(newMin)} (was ${inr(oldMin)}) — ${Math.round(dropPct)}% off. Grab it before it's gone.`;
+    const deepLink = `/products/${product.slug}`;
+    const image = await this.prisma.productMedia.findFirst({ where: { productId: product.id, type: 'IMAGE' }, orderBy: { position: 'asc' }, select: { url: true } });
+    const email = (name: string | null) =>
+      priceDropEmail(this.email, name, { title: product.title, slug: product.slug, image: image?.url ?? null, price: newMin }, oldMin);
     let sent = 0;
     for (const userId of userIds) {
-      if (await this.dispatch(storeId, userId, 'priceDrop', { title, body, deepLink: `/products/${product.slug}` })) sent++;
+      if (await this.dispatch(storeId, userId, 'priceDrop', { title, body, deepLink, email })) sent++;
     }
     this.logger.log(`Price drop on ${product.slug}: notified ${sent}/${userIds.length} shoppers`);
     return sent;
@@ -93,7 +110,8 @@ export class EngagementService {
       },
       select: {
         id: true, userId: true, updatedAt: true, quantity: true,
-        product: { select: { storeId: true, slug: true, title: true } },
+        product: { select: { storeId: true, slug: true, title: true, media: { where: { type: 'IMAGE' }, orderBy: { position: 'asc' }, take: 1, select: { url: true } } } },
+        variant: { select: { price: true, mrp: true, attributes: true } },
       },
     });
 
@@ -117,7 +135,21 @@ export class EngagementService {
       const body = count === 1
         ? `“${first.title}” is still waiting for you. Complete your order before it sells out.`
         : `You have ${count} items waiting in your cart, including “${first.title}”. Complete your order before they sell out.`;
-      const ok = await this.dispatch(first.storeId, userId, 'abandonedCart', { title, body, deepLink: '/cart' });
+      const email = (name: string | null) =>
+        cartReminderEmail(
+          this.email,
+          name,
+          list.map((it) => ({
+            title: it.product.title,
+            slug: it.product.slug,
+            image: it.product.media[0]?.url ?? null,
+            attributes: it.variant.attributes,
+            quantity: it.quantity,
+            price: Number(it.variant.price),
+            mrp: it.variant.mrp ? Number(it.variant.mrp) : null,
+          })),
+        );
+      const ok = await this.dispatch(first.storeId, userId, 'abandonedCart', { title, body, deepLink: '/cart', email });
       await this.prisma.cartItem.updateMany({ where: { id: { in: list.map((l) => l.id) } }, data: { reminderSentAt: new Date() } });
       if (ok) reminded++;
     }
@@ -132,12 +164,5 @@ export class EngagementService {
     } catch (err) {
       this.logger.error('Abandoned-cart cron failed', err instanceof Error ? err.stack : String(err));
     }
-  }
-
-  private emailHtml(p: DispatchPayload) {
-    const cta = p.deepLink
-      ? `<p style="margin:24px 0"><a href="${p.deepLink}" style="background:#111;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600">View</a></p>`
-      : '';
-    return `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto"><h2 style="font-weight:600">${p.title}</h2><p style="color:#444;line-height:1.6">${p.body}</p>${cta}</div>`;
   }
 }

@@ -160,7 +160,7 @@ export class IntegrationsService implements OnModuleInit {
           await smtpTransport(settings).sendMail({
             from: settings.fromAddress,
             to,
-            subject: 'Peace — test email',
+            subject: 'Test email — your email settings work',
             html: '<p>Your email settings work. Order and verification emails will be sent from this address.</p>',
           });
           return { ok: true, message: `Test email sent to ${to}.` };

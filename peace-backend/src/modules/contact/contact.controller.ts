@@ -1,13 +1,14 @@
 import { BadRequestException, Body, Controller, Post } from '@nestjs/common';
 import { Public } from '../../common/decorators/public.decorator';
-import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { EmailService } from '../../infra/notifications/email.service';
+import { contactFormEmail } from '../../infra/notifications/email-content';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 
 @Public()
 @Controller('contact')
 export class ContactController {
   constructor(
-    private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -30,7 +31,7 @@ export class ContactController {
       );
 
     const store = await this.prisma.store.findFirst({
-      select: { settings: true },
+      select: { id: true, settings: true },
     });
     const to = (store?.settings as { contact?: { email?: string } } | null)
       ?.contact?.email;
@@ -38,12 +39,8 @@ export class ContactController {
       throw new BadRequestException(
         'Contact form is not set up yet. Please try again later.',
       );
-    const html = `<p><b>From:</b> ${name} (${email})</p><p><b>Subject:</b> ${body.subject?.trim() || '—'}</p><p>${message}</p>`;
-    await this.notifications.sendEmail(
-      to,
-      `Contact form: ${body.subject?.trim() || 'New message'}`,
-      html,
-    );
+    const subject = body.subject?.trim() || 'New message';
+    await this.email.send(store!.id, to, `Contact form: ${subject}`, contactFormEmail(name, email, subject, message));
     return { received: true };
   }
 }

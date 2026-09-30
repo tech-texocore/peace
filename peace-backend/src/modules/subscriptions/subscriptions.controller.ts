@@ -1,4 +1,5 @@
-import { BadRequestException, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Public } from '../../common/decorators/public.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { CurrentUser, type AuthUser } from '../../common/decorators/current-user.decorator';
@@ -7,6 +8,13 @@ import { SubscriptionsService } from './subscriptions.service';
 @Controller('subscriptions')
 export class SubscriptionsController {
   constructor(private readonly subs: SubscriptionsService) {}
+
+  @Public()
+  @Post('newsletter/unsubscribe')
+  unsubscribe(@Body('token') token?: string) {
+    if (!token) throw new BadRequestException('This unsubscribe link is not valid.');
+    return this.subs.unsubscribe(token);
+  }
 
   @RequirePermissions('subscriptions.read')
   @Get('newsletter')

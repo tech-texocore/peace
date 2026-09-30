@@ -17,6 +17,7 @@ import {
 } from '../../common/decorators/current-user.decorator';
 import { IntegrationsService } from '../../infra/integrations/integrations.service';
 import { ShippingService } from '../../infra/shipping/shipping.service';
+import { EmailSamplesService } from '../../infra/notifications/email-samples.service';
 import {
   SUPER_ADMIN_GROUPS,
   type IntegrationGroup,
@@ -34,6 +35,7 @@ export class StoresController {
     private readonly stores: StoresService,
     private readonly integrations: IntegrationsService,
     private readonly shipping: ShippingService,
+    private readonly emailSamples: EmailSamplesService,
   ) {}
 
   @Roles('SUPER_ADMIN')
@@ -104,6 +106,19 @@ export class StoresController {
       throw new BadRequestException('Save the BharatShip login and pickup warehouse ID first');
     }
     return this.shipping.courierList();
+  }
+
+  // One sample of every email, sent to the given address for review.
+  @RequirePermissions('integrations.update')
+  @Post('integrations/email/samples')
+  sendEmailSamples(
+    @CurrentUser() user: AuthUser,
+    @Body('to') to: string | undefined,
+    @Query('storeId') storeId?: string,
+  ) {
+    const address = (to ?? user.email ?? '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) throw new BadRequestException('Enter a valid email address');
+    return this.emailSamples.send(this.resolveStoreId(user, storeId), address, user.name ?? null);
   }
 
   @RequirePermissions('integrations.update')

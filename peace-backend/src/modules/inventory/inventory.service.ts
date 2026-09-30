@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
-import { NotificationsService } from '../../infra/notifications/notifications.service';
+import { EmailService } from '../../infra/notifications/email.service';
 
 const LOW_STOCK = 5;
 
@@ -9,7 +9,7 @@ const LOW_STOCK = 5;
 export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly email: EmailService,
   ) {}
 
   async list(storeId: string, query: { search?: string; page?: number; limit?: number; lowOnly?: boolean; categoryId?: string; stockStatus?: 'in' | 'low' | 'out' }) {
@@ -79,11 +79,7 @@ export class InventoryService {
     try {
       const subs = await this.prisma.backInStockSubscription.findMany({ where: { variantId, notified: false }, select: { id: true, email: true } });
       if (!subs.length) return;
-      const v = await this.prisma.productVariant.findUnique({ where: { id: variantId }, select: { product: { select: { title: true, slug: true } } } });
-      const title = v?.product.title ?? 'A product you wanted';
-      for (const s of subs) {
-        await this.notifications.sendEmail(s.email, `${title} is back in stock`, `<p>Good news! <b>${title}</b> is available again.</p><p>Grab it before it sells out.</p><p>— Peace</p>`);
-      }
+      for (const s of subs) await this.email.sendBackInStock(variantId, s.email);
       await this.prisma.backInStockSubscription.updateMany({ where: { id: { in: subs.map((s) => s.id) } }, data: { notified: true } });
     } catch { /* non-blocking */ }
   }

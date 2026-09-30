@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Check, ShieldCheck, Plug, CircleAlert, Copy } from "lucide-react";
+import { Loader2, Check, ShieldCheck, Plug, CircleAlert, Copy, Mail } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { env } from "@/lib/config/env";
 import { useAdminAuth } from "@/lib/admin/auth-context";
@@ -66,7 +66,7 @@ const GROUPS: Group[] = [
 const randomSecret = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
 
 export default function IntegrationsPage() {
-  const { storeId, hasPermission } = useAdminAuth();
+  const { storeId, hasPermission, profile } = useAdminAuth();
   const [data, setData] = useState<Integrations | null>(null);
   const [form, setForm] = useState<Integrations>({});
   const [saving, setSaving] = useState(false);
@@ -201,6 +201,8 @@ export default function IntegrationsPage() {
                   )}
                 </div>
               )}
+
+              {g.key === "email" && canEdit && <EmailSamples q={q} defaultTo={profile?.email ?? ""} ready={connected(g)} />}
             </section>
           );
         })}
@@ -248,6 +250,40 @@ function CourierPicker({ value, onChange, q }: { value: string; onChange: (v: st
         </button>
       </div>
       {error ? <p className="mt-1 text-xs text-danger">{error}</p> : <p className="mt-1 text-xs text-muted">Couriers active on your BharatShip account.</p>}
+    </div>
+  );
+}
+
+// Sends one of every store email (orders, cart, offers, returns…) so the design can be checked in a real inbox.
+function EmailSamples({ q, defaultTo, ready }: { q: string; defaultTo: string; ready: boolean }) {
+  const [to, setTo] = useState(defaultTo);
+  const [state, setState] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false });
+
+  async function send() {
+    setState({ busy: true });
+    try {
+      const res = await api.post<{ sent: number; to: string }>(`/stores/integrations/email/samples${q}`, { to: to.trim() }, { auth: true });
+      setState({ busy: false, ok: true, message: `${res.sent} sample emails sent to ${res.to}` });
+    } catch (e) {
+      setState({ busy: false, ok: false, message: e instanceof Error ? e.message : "Could not send samples" });
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-lg bg-line/40 px-3 py-3">
+      <p className="text-xs text-muted">Preview every email customers get — order updates, cart reminder, price drop, back in stock, returns, newsletter — in a real inbox.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="you@example.com" autoComplete="off" data-1p-ignore data-lpignore="true" className="h-9 min-w-0 flex-1 rounded-full border border-line bg-canvas px-4 text-sm outline-none focus:border-accent" />
+        <button type="button" onClick={send} disabled={state.busy || !ready || !to.trim()} className="flex items-center gap-2 rounded-full border border-line px-4 py-1.5 text-xs font-medium hover:border-accent hover:text-accent disabled:opacity-50">
+          {state.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />} Send sample emails
+        </button>
+      </div>
+      {!ready && <p className="mt-1 text-xs text-muted">Save the email settings above first.</p>}
+      {state.message && (
+        <p className={cn("mt-2 flex items-center gap-1 text-xs", state.ok ? "text-accent" : "text-danger")}>
+          {state.ok ? <Check className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />} {state.message}
+        </p>
+      )}
     </div>
   );
 }

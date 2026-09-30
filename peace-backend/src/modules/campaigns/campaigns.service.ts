@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { NotificationsService } from '../../infra/notifications/notifications.service';
 import { UpsertCampaignDto } from './dto/campaign.dto';
+import { EmailService } from '../../infra/notifications/email.service';
+import { campaignEmail } from '../../infra/notifications/email-content';
 
 interface Audience { base?: string; groupId?: string; state?: string }
 interface Recipient { email: string; userId: string | null; name: string | null; phone: string | null; emailOptIn: boolean; smsOptIn: boolean; whatsappOptIn: boolean }
@@ -14,6 +16,7 @@ export class CampaignsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly email: EmailService,
   ) {}
 
   // Absolute, UTM-tagged link per channel; in-app keeps a site-relative path.
@@ -99,10 +102,6 @@ export class CampaignsService {
     return text.replace(/\{name\}/g, r.name || 'there');
   }
 
-  private emailHtml(subject: string, body: string, link: string | null) {
-    const cta = link ? `<p style="margin-top:16px"><a href="${link}">Shop now →</a></p>` : '';
-    return `<div><h2>${subject}</h2><p>${body.replace(/\n/g, '<br/>')}</p>${cta}<p style="color:#888;margin-top:24px">— Peace</p></div>`;
-  }
 
   async send(storeId: string, id: string) {
     const c = await this.get(storeId, id);
@@ -119,7 +118,20 @@ export class CampaignsService {
       const body = this.render(c.body, r);
       let delivered = false;
       if (c.channels.includes('EMAIL') && r.email && (r.userId ? r.emailOptIn : true)) {
-        await this.notifications.sendEmail(r.email, subject, this.emailHtml(subject, body, links.email));
+        await this.email.send(
+          storeId,
+          r.email,
+          subject,
+          campaignEmail(
+            subject,
+            body,
+            links.email,
+            r.name,
+            r.userId
+              ? { reason: 'You get these emails because you opted in to offers and updates.', preferencesUrl: this.email.link('/account/preferences') }
+              : { reason: 'You get these emails because you subscribed to our newsletter.', preferencesUrl: this.email.unsubscribeUrl(storeId, r.email), preferencesLabel: 'Unsubscribe' },
+          ),
+        );
         delivered = true;
       }
       if (c.channels.includes('SMS') && r.phone && r.smsOptIn) { await this.notifications.sendSms(r.phone, withLink(`${subject}: ${body}`, links.sms)); delivered = true; }
