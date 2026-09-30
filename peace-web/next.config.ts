@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: env.FIREBASE_MESSAGING_SENDER_ID ?? "",
     NEXT_PUBLIC_FIREBASE_APP_ID: env.FIREBASE_APP_ID ?? "",
   },
+  // Serves Firebase's sign-in handler from our own domain, so Google shows "continue to <our domain>"
+  // once FIREBASE_AUTH_DOMAIN is set to the site's domain.
+  async rewrites() {
+    if (!env.FIREBASE_PROJECT_ID) return [];
+    return [{ source: "/__/auth/:path*", destination: `https://${env.FIREBASE_PROJECT_ID}.firebaseapp.com/__/auth/:path*` }];
+  },
 };
 
 export default nextConfig;
