@@ -27,7 +27,7 @@ export function Lightbox({ media, start = 0, onClose }: { media: LightboxMedia[]
         <span className="text-sm">{i + 1} / {media.length}</span>
         <button onClick={onClose} aria-label="Close" className="rounded-full p-2 hover:bg-white/10"><X className="h-6 w-6" /></button>
       </div>
-      <div className="relative flex flex-1 items-center justify-center px-4 pb-6">
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-6">
         {media.length > 1 && (
           <button onClick={() => go(-1)} className="absolute left-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"><ChevronLeft className="h-6 w-6" /></button>
         )}
