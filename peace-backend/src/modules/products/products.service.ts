@@ -90,6 +90,7 @@ export class ProductsService {
     if (dto.categoryId) await this.assertCategory(storeId, dto.categoryId);
     if (dto.brandId) await this.assertBrand(storeId, dto.brandId);
     const slug = dto.slug ? await this.uniqueSlug(storeId, dto.slug, id) : undefined;
+    if (dto.variants && !dto.variants.length) throw new BadRequestException('A product needs at least one variant with a price');
     const oldMin = dto.variants ? await this.minPrice(id) : null;
     await this.prisma.$transaction(async (tx) => {
       await tx.product.update({

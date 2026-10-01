@@ -177,7 +177,8 @@ export function ProductForm({ productId }: { productId?: string }) {
   }, [productId, storeId, sellers.length]);
 
   const activeAxes = useMemo(() => axes.filter((a) => (f.axisValues[a]?.length ?? 0) > 0), [axes, f.axisValues]);
-  const grid = useMemo(() => (axes.length ? combos(activeAxes, f.axisValues) : [[DEFAULT_KEY]]), [axes, activeAxes, f.axisValues]);
+  // No option values picked = a single-price product with one variant.
+  const grid = useMemo(() => (activeAxes.length ? combos(activeAxes, f.axisValues) : [[DEFAULT_KEY]]), [activeAxes, f.axisValues]);
   function variantFor(comboKey: string): VariantRow {
     return f.variants[comboKey] ?? emptyVariant(autoSku(comboKey));
   }
@@ -227,7 +228,7 @@ export function ProductForm({ productId }: { productId?: string }) {
 
   async function submit(status?: string) {
     setBusy(true); setError(null);
-    const keys = axes.length ? grid.map((c) => c.join("|")) : [DEFAULT_KEY];
+    const keys = grid.map((c) => c.join("|"));
     const variants = keys.map((k, i) => {
       const v = variantFor(k);
       const attributes = activeAxes.length ? Object.fromEntries(activeAxes.map((ax, ai) => [ax, k.split("|")[ai]])) : undefined;
